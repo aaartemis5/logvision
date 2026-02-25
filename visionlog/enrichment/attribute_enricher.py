@@ -1,0 +1,164 @@
+"""
+enrichment/attribute_enricher.py — InsightFace (age/gender) + CLIP (clothing).
+Both run once per new person and are cached by local_id.
+"""
+import cv2
+import numpy as np
+from visionlog.detection.detector import Detection
+
+
+class ClipDescriber:
+    """
+    CLIP ViT-B/32 zero-shot clothing classifier.
+    Text embeddings are pre-computed at load time; inference is one image forward pass.
+    Returns (clothing_label, unit-norm 512-dim embedding).
+    """
+
+    COLOUR_LABELS = [
+        "black", "white", "grey",   "navy",
+        "blue",  "red",   "green",  "yellow",
+        "orange","purple","brown",  "pink",
+    ]
+    COLOUR_PROMPTS = [
+        f"a photo of a person wearing {c} colored clothes" for c in COLOUR_LABELS
+    ]
+
+    GARMENT_LABELS = ["hoodie", "t-shirt", "jacket", "shirt", "sweater", "uniform"]
+    GARMENT_PROMPTS = [
+        "a photo of a person wearing a hoodie or sweatshirt",
+        "a photo of a person wearing a t-shirt",
+        "a photo of a person wearing a jacket or coat",
+        "a photo of a person wearing a collared shirt",
+        "a photo of a person wearing a sweater or jumper",
+        "a photo of a person wearing a work uniform",
+    ]
+
+    def __init__(self):
+        self._processor      = None
+        self._model          = None
+        self._colour_embeds  = None
+        self._garment_embeds = None
+
+    def _load(self):
+        import torch
+        from transformers import CLIPProcessor, CLIPModel
+        print("[CLIP] Loading openai/clip-vit-base-patch32 …", flush=True)
+        self._processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        self._model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        self._model.eval()
+        with torch.no_grad():
+            c_in   = self._processor(text=self.COLOUR_PROMPTS,  return_tensors="pt", padding=True)
+            c_feat = self._model.get_text_features(**c_in)
+            self._colour_embeds = c_feat / c_feat.norm(dim=-1, keepdim=True)
+
+            g_in   = self._processor(text=self.GARMENT_PROMPTS, return_tensors="pt", padding=True)
+            g_feat = self._model.get_text_features(**g_in)
+            self._garment_embeds = g_feat / g_feat.norm(dim=-1, keepdim=True)
+        print("[CLIP] Ready.", flush=True)
+
+    def describe(self, person_bgr: np.ndarray) -> tuple[str, np.ndarray | None]:
+        """Returns (clothing_label, unit-norm embedding) or ('unknown', None) on failure."""
+        if person_bgr is None or person_bgr.size == 0:
+            return "unknown", None
+
+        h, w = person_bgr.shape[:2]
+        if min(h, w) < 112:
+            scale      = 112 / min(h, w)
+            person_bgr = cv2.resize(person_bgr, (int(w*scale), int(h*scale)),
+                                    interpolation=cv2.INTER_LINEAR)
+        try:
+            import torch
+            from PIL import Image
+            if self._model is None:
+                self._load()
+
+            pil_img  = Image.fromarray(cv2.cvtColor(person_bgr, cv2.COLOR_BGR2RGB))
+            with torch.no_grad():
+                img_in   = self._processor(images=pil_img, return_tensors="pt")
+                img_feat = self._model.get_image_features(**img_in)
+                img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
+
+                colour  = self.COLOUR_LABELS[(img_feat @ self._colour_embeds.T).squeeze(0).argmax().item()]
+                garment = self.GARMENT_LABELS[(img_feat @ self._garment_embeds.T).squeeze(0).argmax().item()]
+
+            return f"{colour} {garment}", img_feat.squeeze(0).cpu().numpy().astype(np.float32)
+        except Exception as e:
+            print(f"[CLIP] {e}")
+            return "unknown", None
+
+
+_clip_describer = ClipDescriber()
+
+
+_insight_app = None
+
+def _get_insight():
+    global _insight_app
+    if _insight_app is None:
+        from insightface.app import FaceAnalysis
+        _insight_app = FaceAnalysis(
+            name="buffalo_sc",
+            allowed_modules=["detection", "genderage"],
+            providers=["CPUExecutionProvider"]
+        )
+        _insight_app.prepare(ctx_id=-1, det_size=(320, 320))
+        print("[AttributeEnricher] InsightFace ready.")
+    return _insight_app
+
+
+class AttributeEnricher:
+    """Enriches detections with age, gender, and clothing description. Cached per person."""
+
+    def __init__(self):
+        self._cache: dict[int, dict] = {}
+
+    def enrich(self, det: Detection, frame: np.ndarray) -> dict:
+        tid = det.local_id
+        if tid in self._cache:
+            return self._cache[tid]
+        attrs = self._run(det, frame)
+        self._cache[tid] = attrs
+        return attrs
+
+    def _run(self, det: Detection, frame: np.ndarray) -> dict:
+        x1, y1, x2, y2 = det.bbox
+        h, w = frame.shape[:2]
+        PAD  = 50
+
+        # InsightFace — padded crop for better face detection
+        px1 = max(0, x1-PAD); py1 = max(0, y1-PAD)
+        px2 = min(w, x2+PAD); py2 = min(h, y2+PAD)
+        person_crop = frame[py1:py2, px1:px2]
+
+        age, gender = None, None
+        if person_crop.size > 0:
+            try:
+                cr_h, cr_w = person_crop.shape[:2]
+                if min(cr_h, cr_w) < 160:
+                    s           = 160 / min(cr_h, cr_w)
+                    person_crop = cv2.resize(person_crop, (int(cr_w*s), int(cr_h*s)),
+                                             interpolation=cv2.INTER_LINEAR)
+                faces = _get_insight().get(person_crop)
+                if faces:
+                    age    = int(faces[0].age)
+                    gender = "female" if faces[0].gender == 0 else "male"
+            except Exception:
+                pass
+
+        # CLIP — upper 65% of bbox (clothing focus, skip feet/floor)
+        ub        = min(h, y1 + int((y2-y1)*0.65))
+        clip_crop = frame[max(0,y1):ub, max(0,x1):min(w,x2)]
+        clothing, clip_embedding = _clip_describer.describe(clip_crop)
+
+        return {
+            "age":            age,
+            "gender":         gender,
+            "emotion":        None,
+            "clothing_desc":  clothing,
+            "clip_embedding": clip_embedding,
+        }
+
+    def evict(self, active_ids: set[int]):
+        for tid in list(self._cache.keys()):
+            if tid not in active_ids:
+                del self._cache[tid]
