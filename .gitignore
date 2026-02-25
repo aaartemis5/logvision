@@ -1,0 +1,59 @@
+# ── Learning / demo scripts (not part of core product) ───────────────
+cv_basics.py
+deepface_demo.py
+explore_yolo_output.py
+florence_demo.py
+grounding_dino_demo.py
+pose_classifier.py
+vision_test.py
+
+# ── Secrets ───────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python cache ──────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+
+# ── YOLO / ML model files (large binary files) ────────────────────────
+*.pt
+*.onnx
+*.tflite
+*.pb
+*.weights
+
+# ── Event logs & output ───────────────────────────────────────────────
+visionlog_events.log
+visionlog_events.jsonl
+clips/
+*.log
+
+# ── Video / image test files ──────────────────────────────────────────
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.jpg
+*.jpeg
+*.png
+*.webp
+
+# ── OS / editor ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
+
+# ── Jupyter ───────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── HuggingFace / pip cache ───────────────────────────────────────────
+.cache/
+*.egg-info/
+dist/
+build/
