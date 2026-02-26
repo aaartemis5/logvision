@@ -79,8 +79,8 @@ PROCESS_WIDTH     = 960                 # resize frames to this width before all
 
 # ── Enrichment ───────────────────────────────────────────────────────
 DEEPFACE_ACTIONS  = ["age", "gender", "emotion"]
-FLORENCE_INTERVAL = 15     # run Florence-2 every N seconds (non-blocking background thread)
-FLORENCE_MODEL    = "microsoft/Florence-2-base"
+VLM_INTERVAL      = 15     # run VLM every N seconds (non-blocking background thread)
+VLM_MODEL         = "Qwen/Qwen2.5-VL-3B-Instruct"  # State-of-the-Art VLM (perfect for 16GB Colab GPUs)
 
 # ── Anomaly Thresholds ───────────────────────────────────────────────
 DWELL_MEDIUM_S    = 60     # seconds before MEDIUM dwell alert

@@ -36,7 +36,7 @@ class SceneDescriber:
     def should_run(self, camera_id: str) -> bool:
         """True if enough time has passed since last request for this camera."""
         last = self._last_req.get(camera_id, 0)
-        return (time.time() - last) >= config.FLORENCE_INTERVAL
+        return (time.time() - last) >= config.VLM_INTERVAL
 
     def request(self, frame: np.ndarray, camera_id: str) -> None:
         """
@@ -72,47 +72,70 @@ class SceneDescriber:
         """Lazy-load model (thread-safe, only loads once)."""
         with self._lock:
             if self._model is None:
-                print("[SceneDescriber] Loading Florence-2... (one-time, may take a minute)")
-                from transformers import AutoProcessor, AutoModelForCausalLM
-                self._model = AutoModelForCausalLM.from_pretrained(
-                    config.FLORENCE_MODEL, trust_remote_code=True,
-                    torch_dtype=torch.float32
-                )
-                self._processor = AutoProcessor.from_pretrained(
-                    config.FLORENCE_MODEL, trust_remote_code=True
-                )
-                print("[SceneDescriber] Florence-2 ready.")
+                print(f"[SceneDescriber] Loading {config.VLM_MODEL}... (may take a minute)")
+                try:
+                    from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+                    self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                        config.VLM_MODEL, torch_dtype="auto", device_map="auto"
+                    )
+                    self._processor = AutoProcessor.from_pretrained(
+                        config.VLM_MODEL
+                    )
+                    print("[SceneDescriber] Qwen2.5-VL ready.")
+                except ImportError as e:
+                    print(f"[SceneDescriber] Missing dependencies for Qwen! Ensure qwen-vl-utils is installed. Error: {e}")
 
     def _run(self, frame: np.ndarray, camera_id: str):
         """Background worker: run inference and store result."""
         try:
             self._load()
-            # Downscale to 512px wide before sending to Florence — much faster
-            h, w = frame.shape[:2]
-            scale = min(1.0, 512 / w)
-            if scale < 1.0:
-                frame = cv2.resize(frame, (int(w*scale), int(h*scale)))
-
+            if self._model is None:
+                return
+            
+            from qwen_vl_utils import process_vision_info
+            
+            # Convert OpenCV BGR to RGB PIL Image
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_img   = Image.fromarray(frame_rgb)
 
-            task   = "<DETAILED_CAPTION>"
-            inputs = self._processor(text=task, images=pil_img, return_tensors="pt")
-            with torch.no_grad():
-                ids = self._model.generate(
-                    input_ids    = inputs["input_ids"],
-                    pixel_values = inputs["pixel_values"],
-                    max_new_tokens = 80,
-                    num_beams    = 2,
-                )
-            raw    = self._processor.batch_decode(ids, skip_special_tokens=False)[0]
-            parsed = self._processor.post_process_generation(
-                raw, task=task, image_size=(pil_img.width, pil_img.height)
+            task   = "Describe any security-relevant actions, suspicious behaviour, or general layout of people in this retail CCTV frame."
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": pil_img},
+                        {"type": "text", "text": task},
+                    ],
+                }
+            ]
+            
+            # Preparation for inference
+            text = self._processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
             )
-            caption = str(parsed.get(task, "")).strip()
+            image_inputs, video_inputs = process_vision_info(messages)
+            inputs = self._processor(
+                text=[text],
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt",
+            )
+            inputs = inputs.to(self._model.device)
+            
+            # Inference
+            with torch.no_grad():
+                generated_ids = self._model.generate(**inputs, max_new_tokens=128)
+                
+            generated_ids_trimmed = [
+                out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            caption = self._processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )[0].strip()
 
             self._last_result[camera_id] = {
-                "florence_caption": caption,
+                "florence_caption": caption,  # Keep the dict key the same so downstream logic doesn't break
                 "person_count":     None,
                 "ocr_text":         None,
             }

@@ -1,0 +1,17 @@
+ultralytics
+insightface
+onnxruntime-gpu
+torch
+torchvision
+torchreid
+sentence-transformers
+pinecone-client
+python-dotenv
+google-generativeai
+fastapi
+uvicorn
+python-multipart
+# Qwen2.5-VL Requirements
+transformers
+qwen-vl-utils
+accelerate
