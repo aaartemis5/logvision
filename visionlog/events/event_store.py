@@ -45,7 +45,12 @@ def store(event: dict, use_pinecone: bool = True):
     # ── Terminal print ────────────────────────────────────────────────
     anom = event.get("anomaly", {})
     tag  = f"  ⚠️  [{anom.get('severity')}]" if anom.get("is_anomaly") else ""
-    print(f"[EVENT]{tag} {text}")
+    
+    console_text = text
+    if " VLM: '" in console_text:
+        console_text = console_text.split(" VLM: '")[0] + " [VLM Context Logged]"
+        
+    print(f"[EVENT]{tag} {console_text}")
 
     # ── Local log file ────────────────────────────────────────────────
     with open(config.LOG_FILE, "a", encoding="utf-8") as f:

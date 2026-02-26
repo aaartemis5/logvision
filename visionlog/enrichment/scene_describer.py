@@ -98,7 +98,7 @@ class SceneDescriber:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_img   = Image.fromarray(frame_rgb)
 
-            task   = "Describe any security-relevant actions, suspicious behaviour, or general layout of people in this retail CCTV frame. If you see people, describe their attire in detail."
+            task   = "Briefly describe the overall scene and any security-relevant actions in this retail CCTV frame. Do not list individual people. Keep the response concise and focused on suspicious behaviour."
             messages = [
                 {
                     "role": "user",
@@ -125,7 +125,7 @@ class SceneDescriber:
             
             # Inference
             with torch.no_grad():
-                generated_ids = self._model.generate(**inputs, max_new_tokens=384)
+                generated_ids = self._model.generate(**inputs, max_new_tokens=128)
                 
             generated_ids_trimmed = [
                 out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
