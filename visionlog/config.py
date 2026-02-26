@@ -16,15 +16,22 @@ except ImportError:
 CAMERAS = {
     "CAM_01": {
         "name":     "Store Front",
-        "path":     r"C:\Users\Aditya\OneDrive\Pictures\Screenshots\Recording 2026-02-25 162753.mp4",  # ← change to your video file
+        "path":     r"C:\Users\Aditya\OneDrive\Pictures\Screenshots\Recording 2026-02-25 162753.mp4",
         "location": "Aisle 1, main entrance",
         "lat":      None,
         "lon":      None,
         "floor":    1,
         "direction": "north",
     },
-    # Add more cameras here later:
-    # "CAM_02": { "name": "Back Exit", "path": "data/cam02.mp4", ... },
+    "CAM_02": {
+        "name":     "Checkout Counter",
+        "path":     r"C:\Users\Aditya\OneDrive\Pictures\Screenshots\Recording 2026-02-25 161441.mp4",
+        "location": "Checkout area",
+        "lat":      None,
+        "lon":      None,
+        "floor":    1,
+        "direction": "south",
+    }
 }
 
 # ── Zone Definitions per Camera ──────────────────────────────────────
@@ -44,23 +51,25 @@ ZONES = {
         "DISPLAY_AREA": [(0.18, 0.12), (0.52, 0.12),
                          (0.52, 0.88), (0.18, 0.88)],
 
-        # Right half — tall shelving units (main product aisles)
-        "SHELF_AREA":   [(0.52, 0.00), (1.00, 0.00),
-                         (1.00, 0.62), (0.52, 0.62)],
+        # Right side — main product shelves (black shelving units)
+        "SHELF_AREA":   [(0.52, 0.15), (0.95, 0.15),
+                         (0.95, 0.88), (0.52, 0.88)],
 
-        # Bottom-right — dark floor mat = store entrance / exit door
-        "ENTRANCE":     [(0.52, 0.62), (1.00, 0.62),
-                         (1.00, 1.00), (0.52, 1.00)],
+        # Bottom right — glass entrance door and adjacent wall
+        "ENTRANCE":     [(0.55, 0.88), (1.00, 0.88),
+                         (1.00, 1.00), (0.35, 1.00)],
 
         # Top strip — back-of-store aisle (far end of shelving)
         "BACK_AISLE":   [(0.18, 0.00), (0.52, 0.00),
                          (0.52, 0.12), (0.18, 0.12)],
+    },
+    "CAM_02": {
+        "GENERAL_AREA": [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     }
-
 }
 
 # ── Detection ────────────────────────────────────────────────────────
-YOLO_MODEL        = "yolov8m-pose.pt"   # swap to yolov8m-pose.pt for better accuracy
+YOLO_MODEL        = "yolo11l-pose.pt"     # Large model: better pose accuracy, slower CPU inference
 TRACKER           = "botsort_reid.yaml"  # BoT-SORT + appearance ReID enabled
 YOLO_CONF         = 0.4                 # detection confidence threshold
 YOLO_CLASSES      = [0]                 # 0 = person only. Remove to detect all 80 classes.

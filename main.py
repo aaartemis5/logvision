@@ -40,8 +40,8 @@ def _norm_reason(r: str) -> str:
     return re.sub(r'_\d+s?$', '', r)
 
 
-def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
-    """Run the full pipeline for a single camera."""
+def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool):
+    """Generator yielding annotated frames. Runs the full VisionLog pipeline."""
     print(f"\n{'='*55}")
     print(f"  VisionLog AI — {cam_cfg['name']} ({cam_id})")
     print(f"  Source : {cam_cfg['path']}")
@@ -128,12 +128,10 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
             canvas = frame.copy()
             _draw_boxes(canvas, last_detections, *last_proc_scale,
                         smooth_bboxes, _SMOOTH_ALPHA, last_anomalous)
-            cv2.putText(canvas, f"{cam_id} | {cam_cfg['name']} | Q=quit",
+            cv2.putText(canvas, f"{cam_id} | {cam_cfg['name']} | Live",
                         (10, canvas.shape[0]-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200,200,200), 1)
-            cv2.imshow(f"VisionLog — {cam_id}", canvas)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            yield canvas
             continue
 
         # ── Optional resize (faster inference on all downstream models) ────
@@ -334,12 +332,10 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
         annotated = frame.copy()
         _draw_boxes(annotated, detections, scale_x, scale_y,
                     smooth_bboxes, _SMOOTH_ALPHA, last_anomalous)
-        cv2.putText(annotated, f"{cam_id} | {cam_cfg['name']} | Q=quit",
+        cv2.putText(annotated, f"{cam_id} | {cam_cfg['name']} | Live",
                     (10, annotated.shape[0]-10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200,200,200), 1)
-        cv2.imshow(f"VisionLog — {cam_id}", annotated)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        yield annotated
 
         # ── Cleanup stale tracks ──────────────────────────────────────
         anomaly.cleanup_stale(active_ids)
@@ -355,10 +351,18 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
             if tid not in active_ids:
                 del smooth_bboxes[tid]
 
-    cv2.destroyAllWindows()
     print(f"\n[Main] Session {session_id} ended.")
     print(f"  Events logged to: {config.LOG_FILE}")
     print(f"  Full JSON log  : visionlog_events.jsonl")
+
+
+def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
+    """Run the CLI version of the camera pipeline."""
+    for frame in run_camera_generator(cam_id, cam_cfg, use_pinecone):
+        cv2.imshow(f"VisionLog — {cam_id}", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    cv2.destroyAllWindows()
 
 
 def main():

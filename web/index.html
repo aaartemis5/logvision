@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisionLog AI — Command Center</title>
+    <!-- Modern Futurist Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <!-- Top Navigation Bar -->
+    <header class="glass-header">
+        <div class="logo-container">
+            <div class="logo-orb"></div>
+            <h1>VISIONLOG <span class="accent">AI</span></h1>
+        </div>
+        <div class="camera-selector">
+            <label for="cam-select">FEED:</label>
+            <select id="cam-select">
+                <option value="ALL">ALL CAMERAS (Facility View)</option>
+                <!-- Dynamically populated by app.js -->
+            </select>
+        </div>
+        <div class="status-indicator">
+            <span class="pulse-dot"></span> SYSTEM ACTIVE
+        </div>
+    </header>
+
+    <!-- Main Dashboard Layout -->
+    <main class="dashboard">
+        
+        <!-- Left: Live Feed -->
+        <section class="feed-section glass-panel">
+            <div class="panel-header">
+                <h2>LIVE SURVEILLANCE</h2>
+                <span class="feed-status" id="feed-status-text">INITIALIZING...</span>
+            </div>
+            <div class="video-container">
+                <!-- Fallback / Loading state -->
+                <div class="video-placeholder" id="video-placeholder">
+                    SELECT A CAMERA FEED
+                </div>
+                <!-- Actual MJPEG stream (hidden initially if ALL is selected) -->
+                <img id="video-stream" src="" alt="Live Feed" class="hidden">
+            </div>
+            <div class="feed-overlay-data">
+                <p>Tracking engine: <span class="accent">BoT-SORT + OSNet x0.25</span></p>
+                <p>Anomaly detection: <span class="accent">YOLOv11 Hand/Head/Pose</span></p>
+            </div>
+        </section>
+
+        <!-- Right: RAG Chat Assistant -->
+        <section class="chat-section glass-panel">
+            <div class="panel-header">
+                <h2>GEMINI ANALYST</h2>
+                <span class="context-badge" id="chat-context">CTX: FACILITY</span>
+            </div>
+            
+            <div class="chat-history" id="chat-history">
+                <div class="message system-msg">
+                    <div class="msg-icon">AI</div>
+                    <div class="msg-bubble">
+                        <p>VisionLog Analyst online. Index loaded.</p>
+                        <p>Ask me about specific events, suspicious behaviour, or general activity logs.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <textarea id="chat-input" placeholder="Query the surveillance database... (e.g., 'Who was acting suspiciously at the shelves?')" rows="1"></textarea>
+                <button id="send-btn" class="glow-button">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
