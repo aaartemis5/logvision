@@ -356,13 +356,15 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool):
     print(f"  Full JSON log  : visionlog_events.jsonl")
 
 
-def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
+def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool, headless: bool = False):
     """Run the CLI version of the camera pipeline."""
     for frame in run_camera_generator(cam_id, cam_cfg, use_pinecone):
-        cv2.imshow(f"VisionLog — {cam_id}", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    cv2.destroyAllWindows()
+        if not headless:
+            cv2.imshow(f"VisionLog — {cam_id}", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    if not headless:
+        cv2.destroyAllWindows()
 
 
 def main():
@@ -370,6 +372,7 @@ def main():
     parser.add_argument("--camera",     default=None, help="Camera ID from config")
     parser.add_argument("--source",     default=None, help="Override video path")
     parser.add_argument("--no-pinecone", action="store_true", help="Disable Pinecone, log locally")
+    parser.add_argument("--headless",   action="store_true", help="Run without UI (for Colab/Servers)")
     args = parser.parse_args()
 
     use_pinecone = not args.no_pinecone
@@ -386,7 +389,7 @@ def main():
         cameras[first_key] = {**cameras[first_key], "path": args.source}
 
     for cam_id, cam_cfg in cameras.items():
-        run_camera(cam_id, cam_cfg, use_pinecone)
+        run_camera(cam_id, cam_cfg, use_pinecone, args.headless)
 
 
 if __name__ == "__main__":
