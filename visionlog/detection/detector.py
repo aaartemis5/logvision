@@ -123,9 +123,9 @@ class Detector:
 
         return pose, arms_raised, lean
 
-    def process(self, frame, frame_number: int) -> list[Detection]:
+    def process(self, frame, frame_number: int, frame_ts: float = None) -> list[Detection]:
         """Run inference on one frame, return list of Detection objects."""
-        ts = time.time()
+        ts = frame_ts if frame_ts is not None else time.time()
         results = self.model.track(
             frame,
             classes=config.YOLO_CLASSES,

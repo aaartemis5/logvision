@@ -1,0 +1,20 @@
+# VisionLog — BoT-SORT with appearance ReID enabled
+# Based on ultralytics defaults; with_reid: True activates appearance matching
+# using the YOLO detector's own backbone features (model: auto).
+
+tracker_type: botsort
+track_high_thresh: 0.20  # lower threshold keeps partially-occluded detections in the track
+track_low_thresh:  0.1
+new_track_thresh:  0.25
+track_buffer:      90        # 3 seconds at 30fps — keeps lost tracks alive through longer occlusions
+match_thresh:      0.8
+fuse_score:        True
+
+# BoT-SORT specifics
+gmc_method: sparseOptFlow    # camera motion compensation
+
+# ReID
+with_reid:         False     # disabled — OSNet ReID handled in attribute_enricher.py
+model:             auto      # YOLO backbone features (OSNet handled separately in attribute_enricher.py)
+proximity_thresh:  0.5       # min IoU to consider tracks proximate
+appearance_thresh: 0.7       # min appearance similarity (lowered from 0.8 for pose model)

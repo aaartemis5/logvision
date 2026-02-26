@@ -119,7 +119,8 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
     print(f"[Main] Session {session_id} started. Press Q in window to stop.\n")
 
     for frame, frame_meta in source:
-        fn = frame_meta["frame_number"]
+        fn       = frame_meta["frame_number"]
+        frame_ts = frame_meta.get("frame_ts")   # video-position timestamp, not wall clock
 
         # ── Frame skip ──────────────────────────────────────────────────
         if config.FRAME_SKIP > 1 and fn % config.FRAME_SKIP != 0:
@@ -148,7 +149,7 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
             describer.request(proc_frame, cam_id)   # fires thread, returns immediately
 
         # ── Run detector on (possibly resized) frame ─────────────────────
-        detections = detector.process(proc_frame, fn)
+        detections = detector.process(proc_frame, fn, frame_ts)
         active_ids = {d.local_id for d in detections}
 
         # Get latest cached Florence result (set by background thread)
@@ -165,9 +166,11 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool):
             attrs = enricher.enrich(det, proc_frame)  # proc_frame: bbox coords match
 
             # ── Re-ID: match appearance → stable global_id ─────────────
+            _reid_emb = attrs.get('reid_embedding')
+            _emb = _reid_emb if _reid_emb is not None else attrs.get('clip_embedding')
             det.global_id = gallery.match(
                 local_id  = tid,
-                embedding = attrs.get('clip_embedding'),
+                embedding = _emb,
                 zone      = det.zone,
                 clothing  = attrs.get('clothing_desc', 'unknown'),
             )

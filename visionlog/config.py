@@ -61,7 +61,7 @@ ZONES = {
 
 # ── Detection ────────────────────────────────────────────────────────
 YOLO_MODEL        = "yolov8m-pose.pt"   # swap to yolov8m-pose.pt for better accuracy
-TRACKER           = "botsort.yaml"      # botsort: better memory than bytetrack
+TRACKER           = "botsort_reid.yaml"  # BoT-SORT + appearance ReID enabled
 YOLO_CONF         = 0.4                 # detection confidence threshold
 YOLO_CLASSES      = [0]                 # 0 = person only. Remove to detect all 80 classes.
 FRAME_SKIP        = 2                   # process 1-in-N frames (2 = 15fps effective @ 30fps)

@@ -20,21 +20,28 @@ from visionlog import config
 # ── Constants ─────────────────────────────────────────────────────────────────
 TOP_K_DEFAULT = 15     # how many events to retrieve per query
 GEMINI_MODEL  = "gemini-2.5-flash-lite"  # free: 15 RPM, 1,000 req/day (most generous free model)
-SYSTEM_PROMPT = """You are VisionLog AI — an intelligent CCTV security analyst assistant.
-You are given a set of surveillance events retrieved from a vector database.
-Each event is a timestamped observation from a retail store security camera.
+SYSTEM_PROMPT = """You are VisionLog AI — a CCTV security analyst assistant for a retail store.
+You are given timestamped surveillance events from a security camera. Answer the operator's question naturally.
 
-Your job is to:
-1. Answer the user's question accurately based ONLY on the retrieved events.
-2. Highlight the most suspicious or noteworthy patterns.
-3. Reference specific person IDs, zones, timestamps, and risk scores when relevant.
-4. If no relevant events are found, say so clearly.
-5. Be concise but thorough. Think like a security analyst, not a chatbot.
+STYLE RULES (follow strictly):
+- Speak like a security supervisor briefing their team. Professional but plain English.
+- Describe people by APPEARANCE and BEHAVIOUR, not internal tracking numbers.
+  Good: "a woman in a navy jacket near the shelves at 11:45am"
+  Bad: "Person #13 in SHELF_AREA with risk_score 42"
+- Reference TIME and ZONE to anchor every observation.
+- Synthesise related events into a narrative, not a mechanical list.
+- Flag genuine risk clearly and explain WHY it is concerning (e.g. long dwell + reaching gesture = potential concealment).
+- If nothing relevant was found, say so plainly.
 
 FORMAT:
-- Use bullet points for multiple findings.
 - Lead with the most important finding.
-- Always cite: Person #X, zone, timestamp, severity if available.
+- Use short bullet points only when listing multiple separate incidents.
+- Keep the full response under 200 words unless the question is complex.
+
+AVOID:
+- Do not mention internal IDs (Person #X, local_id, global_id).
+- Do not mention technical terms (risk_score, confidence, similarity score, YOLO, vector).
+- Do not repeat the same event twice in different words.
 """
 
 
@@ -109,15 +116,33 @@ def retrieve_events(query: str,
 
 
 def format_events_for_llm(matches: list[dict]) -> str:
-    """Turn Pinecone matches into readable context for the LLM."""
+    """Turn Pinecone matches into structured context the LLM can reason over."""
     if not matches:
         return "No relevant events found."
     lines = []
     for i, m in enumerate(matches, 1):
         meta = m.get("metadata", {})
-        text = meta.get("text", "(no text)")
-        score = round(m.get("score", 0), 3)
-        lines.append(f"[Event {i} | similarity={score}]\n{text}")
+        # Pull key fields for the LLM to use
+        time_str  = meta.get("time",          "unknown time")
+        zone      = meta.get("zone",          "unknown zone").replace("_", " ").title()
+        severity  = meta.get("severity",      "")
+        clothing  = meta.get("clothing_desc", "")
+        gender    = meta.get("gender",        "")
+        age       = meta.get("age",           "")
+        pose      = meta.get("pose",          "")
+        text      = meta.get("text",          "")
+
+        # Build a human-readable header
+        person_desc = " ".join(filter(None, [gender, f"~{age}yo" if age else "", clothing])).strip()
+        if not person_desc:
+            person_desc = "unknown appearance"
+        header = f"[{i}] {time_str} | {zone}"
+        if severity:
+            header += f" | ⚠️ {severity}"
+        if person_desc:
+            header += f" | {person_desc}"
+
+        lines.append(f"{header}\n{text}")
     return "\n\n".join(lines)
 
 

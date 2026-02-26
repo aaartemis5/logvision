@@ -90,6 +90,55 @@ class ClipDescriber:
 _clip_describer = ClipDescriber()
 
 
+class OsNetDescriber:
+    """
+    OSNet-x0.25 person Re-ID feature extractor (via torchreid).
+    Returns a 512-dim unit-norm embedding for identity matching.
+    Uses full person bbox at 256×128 — the standard input for person Re-ID models.
+    """
+
+    def __init__(self):
+        self._model     = None
+        self._transform = None
+
+    def _load(self):
+        import torchreid
+        import torchvision.transforms as T
+        print("[OSNet] Loading osnet_x0_25...", flush=True)
+        self._model = torchreid.models.build_model(
+            name='osnet_x0_25', num_classes=1000, pretrained=True
+        )
+        self._model.eval()
+        self._transform = T.Compose([
+            T.ToPILImage(),
+            T.Resize((256, 128)),
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        print("[OSNet] Ready.", flush=True)
+
+    def embed(self, person_bgr: np.ndarray) -> np.ndarray | None:
+        """Returns 512-dim unit-norm Re-ID embedding or None on failure."""
+        if person_bgr is None or person_bgr.size == 0:
+            return None
+        try:
+            import torch
+            if self._model is None:
+                self._load()
+            rgb = cv2.cvtColor(person_bgr, cv2.COLOR_BGR2RGB)
+            x   = self._transform(rgb).unsqueeze(0)   # (1, 3, 256, 128)
+            with torch.no_grad():
+                feats = self._model(x)                 # (1, 512) in eval mode
+            emb  = feats.squeeze(0).cpu().numpy().astype(np.float32)
+            norm = np.linalg.norm(emb)
+            return (emb / norm) if norm > 0 else emb
+        except Exception as e:
+            print(f"[OSNet] {e}")
+            return None
+
+
+_osnet_describer = OsNetDescriber()
+
 _insight_app = None
 
 def _get_insight():
@@ -145,17 +194,22 @@ class AttributeEnricher:
             except Exception:
                 pass
 
-        # CLIP — upper 65% of bbox (clothing focus, skip feet/floor)
+        # CLIP — upper 65% of bbox for clothing label
         ub        = min(h, y1 + int((y2-y1)*0.65))
         clip_crop = frame[max(0,y1):ub, max(0,x1):min(w,x2)]
         clothing, clip_embedding = _clip_describer.describe(clip_crop)
+
+        # OSNet — full person bbox for identity Re-ID embedding
+        reid_crop      = frame[max(0,y1):min(h,y2), max(0,x1):min(w,x2)]
+        reid_embedding = _osnet_describer.embed(reid_crop)
 
         return {
             "age":            age,
             "gender":         gender,
             "emotion":        None,
             "clothing_desc":  clothing,
-            "clip_embedding": clip_embedding,
+            "clip_embedding": clip_embedding,   # kept for legacy / debug
+            "reid_embedding": reid_embedding,   # OSNet vector — use this in ReID gallery
         }
 
     def evict(self, active_ids: set[int]):

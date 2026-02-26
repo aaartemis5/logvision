@@ -8,7 +8,7 @@ otherwise a new one (G1, G2, …) is created.
 import time
 import numpy as np
 
-REID_THRESHOLD = 0.90
+REID_THRESHOLD = 0.65   # realistic for ImageNet OSNet on overhead CCTV (0.65-0.80 range)
 EXPIRE_S       = 600    # forget a person after 10 min of inactivity
 MAX_GALLERY    = 100
 
