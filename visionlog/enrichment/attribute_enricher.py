@@ -49,10 +49,14 @@ class ClipDescriber:
         with torch.no_grad():
             c_in   = self._processor(text=self.COLOUR_PROMPTS,  return_tensors="pt", padding=True)
             c_feat = self._model.get_text_features(**c_in)
+            if not isinstance(c_feat, torch.Tensor):
+                c_feat = c_feat.text_embeds if hasattr(c_feat, 'text_embeds') else c_feat[0]
             self._colour_embeds = c_feat / c_feat.norm(dim=-1, keepdim=True)
 
             g_in   = self._processor(text=self.GARMENT_PROMPTS, return_tensors="pt", padding=True)
             g_feat = self._model.get_text_features(**g_in)
+            if not isinstance(g_feat, torch.Tensor):
+                g_feat = g_feat.text_embeds if hasattr(g_feat, 'text_embeds') else g_feat[0]
             self._garment_embeds = g_feat / g_feat.norm(dim=-1, keepdim=True)
         print("[CLIP] Ready.", flush=True)
 
@@ -76,6 +80,8 @@ class ClipDescriber:
             with torch.no_grad():
                 img_in   = self._processor(images=pil_img, return_tensors="pt")
                 img_feat = self._model.get_image_features(**img_in)
+                if not isinstance(img_feat, torch.Tensor):
+                    img_feat = img_feat.image_embeds if hasattr(img_feat, 'image_embeds') else img_feat[0]
                 img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
 
                 colour  = self.COLOUR_LABELS[(img_feat @ self._colour_embeds.T).squeeze(0).argmax().item()]

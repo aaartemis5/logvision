@@ -41,8 +41,8 @@ def build_event(
     # ── Build text_summary (this is the embedding target) ────────────
     anom_tag = f"⚠️ {anomaly['severity']}: {', '.join(anomaly['reasons'])}" \
                if anomaly["is_anomaly"] else ""
-    florence_line = f"Florence: '{sc.get('florence_caption', '')}'" \
-                    if sc.get("florence_caption") else ""
+    vlm_line = f"VLM: '{sc.get('vlm_caption', '')}'" \
+                    if sc.get("vlm_caption") else ""
     gesture_tag = (
         f" | Gesture: {hr.get('gesture','idle').upper()}"
         + (" 🚨 BAG_STUFFING" if hr.get('bag_stuff_suspected') else "")
@@ -77,7 +77,7 @@ def build_event(
         f"{pa.get('clothing_desc','?')}) | "
         f"Pose: {det.previous_pose} \u2192 {det.pose} | Zone: {det.zone} | "
         f"Dwell: {dwell_s}s | Move: {det.movement_state}{gesture_tag}{head_tag}"
-        f"{risk_tag}. {florence_line} {anom_tag}"
+        f"{risk_tag}. {vlm_line} {anom_tag}"
     ).strip()
 
     return {
@@ -134,7 +134,7 @@ def build_event(
         },
 
         "scene": {
-            "florence_caption":      sc.get("florence_caption"),
+            "vlm_caption":           sc.get("vlm_caption"),
             "person_count_in_frame": sc.get("person_count", 1),
             "ocr_text":              sc.get("ocr_text"),
         },
@@ -148,7 +148,7 @@ def build_event(
         "text_summary": text_summary,
 
         "_meta": {
-            "florence_ran":      scene is not None,
+            "vlm_ran":           scene is not None,
             "insightface_ran":   person_attrs is not None,
             "hands_ran":         hand_result is not None,
             "head_pose_ran":     head_result is not None,

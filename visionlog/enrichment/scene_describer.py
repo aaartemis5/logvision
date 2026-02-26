@@ -135,7 +135,7 @@ class SceneDescriber:
             )[0].strip()
 
             self._last_result[camera_id] = {
-                "florence_caption": caption,  # Keep the dict key the same so downstream logic doesn't break
+                "vlm_caption": caption,
                 "person_count":     None,
                 "ocr_text":         None,
             }

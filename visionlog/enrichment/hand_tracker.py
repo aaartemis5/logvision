@@ -18,12 +18,14 @@ import numpy as np
 # ── Import mediapipe Tasks API (0.10+) ───────────────────────────────
 _landmarker    = None
 _MP_AVAILABLE  = False
+_LOAD_ATTEMPTED = False
 
 def _get_landmarker():
     """Lazy-load the HandLandmarker (downloads model on first call)."""
-    global _landmarker, _MP_AVAILABLE
-    if _landmarker is not None:
+    global _landmarker, _MP_AVAILABLE, _LOAD_ATTEMPTED
+    if _LOAD_ATTEMPTED:
         return _landmarker
+    _LOAD_ATTEMPTED = True
     try:
         import mediapipe as mp
         import urllib.request, os, tempfile
