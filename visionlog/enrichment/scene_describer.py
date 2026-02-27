@@ -98,7 +98,15 @@ class SceneDescriber:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_img   = Image.fromarray(frame_rgb)
 
-            task   = "Briefly describe the overall scene and any security-relevant actions in this retail CCTV frame. Do not list individual people. Keep the response concise and focused on suspicious behaviour."
+            task   = (
+                "You are a retail security analyst reviewing a live CCTV frame. "
+                "Ignore normal shopping behaviour. ONLY respond if you see something suspicious or security-relevant. "
+                "If you detect suspicious behaviour, immediately flag it and provide: "
+                "(1) a description of the person — their clothing colour, garment type, approximate build; "
+                "(2) their exact location in the store (e.g. near shelves, checkout, entrance); "
+                "(3) precisely what they are doing that is suspicious (e.g. concealing items, loitering, unusual movements). "
+                "If there is nothing suspicious, respond with exactly: 'No suspicious activity detected.'"
+            )
             messages = [
                 {
                     "role": "user",
