@@ -46,27 +46,25 @@ class ClipDescriber:
         self._processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         self._model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
         self._model.eval()
-        def _extract_512(feat, proj_layer):
-            if not isinstance(feat, torch.Tensor):
-                feat = getattr(feat, 'text_embeds', getattr(feat, 'image_embeds', getattr(feat, 'pooler_output', feat[0])))
-            if isinstance(feat, torch.Tensor) and feat.dim() > 2:
-                feat = feat[:, 0, :] if feat.shape[1] > 1 else feat.squeeze(1)
-            if isinstance(feat, torch.Tensor) and feat.shape[-1] != 512 and proj_layer is not None:
-                if isinstance(proj_layer, torch.nn.Linear):
-                    feat = proj_layer(feat)
-                elif hasattr(proj_layer, 'weight'):
-                    # Sometimes projection is just a parameter matrix [768, 512] or [512, 768]
-                    w = proj_layer.weight if proj_layer.weight.shape[0] == 768 else proj_layer.weight.T
-                    feat = feat @ w
-            return feat
-
         with torch.no_grad():
             c_in   = self._processor(text=self.COLOUR_PROMPTS,  return_tensors="pt", padding=True)
-            c_feat = _extract_512(self._model.get_text_features(**c_in), getattr(self._model, 'text_projection', None))
+            c_feat = self._model.get_text_features(**c_in)
+            if not isinstance(c_feat, torch.Tensor):
+                if hasattr(c_feat, 'text_embeds') and c_feat.text_embeds is not None:
+                    c_feat = c_feat.text_embeds
+                else:
+                    pooler = c_feat.pooler_output if hasattr(c_feat, 'pooler_output') else c_feat[1]
+                    c_feat = self._model.text_projection(pooler)
             self._colour_embeds = c_feat / c_feat.norm(dim=-1, keepdim=True)
 
             g_in   = self._processor(text=self.GARMENT_PROMPTS, return_tensors="pt", padding=True)
-            g_feat = _extract_512(self._model.get_text_features(**g_in), getattr(self._model, 'text_projection', None))
+            g_feat = self._model.get_text_features(**g_in)
+            if not isinstance(g_feat, torch.Tensor):
+                if hasattr(g_feat, 'text_embeds') and g_feat.text_embeds is not None:
+                    g_feat = g_feat.text_embeds
+                else:
+                    pooler = g_feat.pooler_output if hasattr(g_feat, 'pooler_output') else g_feat[1]
+                    g_feat = self._model.text_projection(pooler)
             self._garment_embeds = g_feat / g_feat.norm(dim=-1, keepdim=True)
         print("[CLIP] Ready.", flush=True)
 
@@ -90,20 +88,12 @@ class ClipDescriber:
             with torch.no_grad():
                 img_in   = self._processor(images=pil_img, return_tensors="pt")
                 img_feat = self._model.get_image_features(**img_in)
-                
-                # Robust extraction
                 if not isinstance(img_feat, torch.Tensor):
-                    img_feat = getattr(img_feat, 'image_embeds', getattr(img_feat, 'pooler_output', img_feat[0]))
-                if isinstance(img_feat, torch.Tensor) and img_feat.dim() > 2:
-                    img_feat = img_feat[:, 0, :] if img_feat.shape[1] > 1 else img_feat.squeeze(1)
-                if isinstance(img_feat, torch.Tensor) and img_feat.shape[-1] != 512 and hasattr(self._model, 'visual_projection'):
-                    proj = self._model.visual_projection
-                    if isinstance(proj, torch.nn.Linear):
-                        img_feat = proj(img_feat)
-                    elif hasattr(proj, 'weight'):
-                        w = proj.weight if proj.weight.shape[0] == 768 else proj.weight.T
-                        img_feat = img_feat @ w
-                        
+                    if hasattr(img_feat, 'image_embeds') and img_feat.image_embeds is not None:
+                        img_feat = img_feat.image_embeds
+                    else:
+                        pooler = img_feat.pooler_output if hasattr(img_feat, 'pooler_output') else img_feat[1]
+                        img_feat = self._model.visual_projection(pooler)
                 img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
 
                 colour  = self.COLOUR_LABELS[(img_feat @ self._colour_embeds.T).squeeze(0).argmax().item()]
