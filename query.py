@@ -4,10 +4,10 @@ query.py — VisionLog RAG Query Interface
 Ask natural language questions about your CCTV events stored in Pinecone.
 
 Usage:
-    python query.py                              # interactive chat mode
-    python query.py "Who was suspicious today?"  # single query
-    python query.py --top-k 20 "Show me all HIGH risk events"
-    python query.py --zone SHELF_AREA "Who was crouching at shelves?"
+    python query.py                              # interactive chat mode (text only)
+    python query.py --mode both "Who was suspicious today?"
+    python query.py --mode video "Show me someone crouching"
+    python query.py --mode text --zone SHELF_AREA "Who was here?"
     python query.py --severity HIGH "Summarise all high risk activity"
 
 Requirements:
@@ -60,16 +60,10 @@ def _get_embedder():
     return _embedder
 
 
-def _get_pinecone():
-    global _pc_index
-    if _pc_index is None:
-        from pinecone import Pinecone
-        pc      = Pinecone(api_key=config.PINECONE_API_KEY)
-        _pc_index = pc.Index(config.PINECONE_INDEX)
-        stats   = _pc_index.describe_index_stats()
-        print(f"[Query] Connected to Pinecone '{config.PINECONE_INDEX}' "
-              f"({stats.total_vector_count} vectors)", flush=True)
-    return _pc_index
+def _get_pinecone(index_name: str):
+    from pinecone import Pinecone
+    pc = Pinecone(api_key=config.PINECONE_API_KEY)
+    return pc.Index(index_name)
 
 
 def _get_gemini(api_key: str):
@@ -92,7 +86,7 @@ def retrieve_events(query: str,
                     zone: str    = None,
                     severity: str = None,
                     camera: str  = None) -> list[dict]:
-    """Embed query and retrieve top-K similar events from Pinecone."""
+    """Embed query and retrieve top-K similar text events from Pinecone."""
     embedder = _get_embedder()
     vector   = embedder.encode(query).tolist()
 
@@ -105,13 +99,36 @@ def retrieve_events(query: str,
     if camera:
         filt["camera_id"] = {"$eq": camera}
 
-    index   = _get_pinecone()
+    index   = _get_pinecone(config.PINECONE_INDEX)
     results = index.query(
         vector   = vector,
         top_k    = top_k,
         include_metadata = True,
         filter   = filt if filt else None,
     )
+    return results.get("matches", [])
+
+
+def retrieve_video_clips(query: str, top_k: int = 5) -> list[dict]:
+    """Embed query via Twelve Labs Marengo 3.0 and retrieve video clips from Pinecone."""
+    if not config.TWELVE_LABS_API_KEY:
+        return []
+        
+    from twelvelabs import TwelveLabs, TextInputRequest
+    client = TwelveLabs(api_key=config.TWELVE_LABS_API_KEY)
+    
+    # 1. Embed query
+    response = client.embed.v_2.create(
+        input_type="text",
+        model_name="marengo3.0",
+        text=TextInputRequest(input_text=query),
+    )
+    vector = response.data[0].embedding
+    
+    # 2. Search Video Index
+    index = _get_pinecone(config.PINECONE_VIDEO_INDEX)
+    results = index.query(vector=vector, top_k=top_k, include_metadata=True)
+    
     return results.get("matches", [])
 
 
@@ -148,24 +165,72 @@ def format_events_for_llm(matches: list[dict]) -> str:
 
 def ask(query: str,
         api_key: str,
+        mode: str    = "text",
         top_k: int   = TOP_K_DEFAULT,
         zone: str    = None,
         severity: str = None,
         camera: str  = None) -> str:
     """Full RAG pipeline: retrieve → format → generate."""
-    matches  = retrieve_events(query, top_k, zone, severity, camera)
-    context  = format_events_for_llm(matches)
+    
+    # Text Retrieval
+    text_matches = []
+    if mode in ("text", "both"):
+        text_matches = retrieve_events(query, top_k, zone, severity, camera)
+        
+    # Video Retrieval
+    video_matches = []
+    if mode in ("video", "both"):
+        video_matches = retrieve_video_clips(query, top_k=5)
+        
+    output_parts = []
+    
+    # Formatting Video Results
+    if mode in ("video", "both"):
+        output_parts.append("================= 📹 VIDEO EVIDENCE =================")
+        if not video_matches:
+            output_parts.append("No relevant video clips found.")
+        else:
+            for i, m in enumerate(video_matches, 1):
+                meta = m.metadata
+                
+                # Support both Phase 1 (video_rag.py) and Phase 2 (VideoArchiver) metadata keys
+                cam = meta.get("camera_name") or meta.get("video_file") or "Unknown Camera"
+                start = meta.get("start_ts") or meta.get("start_sec") or 0.0
+                
+                # Duration logic
+                if "duration_s" in meta:
+                    dur = meta["duration_s"]
+                elif "end_sec" in meta:
+                    dur = meta["end_sec"] - meta.get("start_sec", 0)
+                else:
+                    dur = 6.0
+                    
+                score = m.score
+                
+                # Format start based on size. Huges numbers = Unix Epoch wall-clock time. Small numbers = relative seconds.
+                if start > 1000000000:
+                    import datetime
+                    dt = datetime.datetime.fromtimestamp(start).strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    dt = f"{int(start // 60)}:{int(start % 60):02d}"
+                    
+                output_parts.append(f"[{i}] Time: {dt} | Camera: {cam} | Clip: {dur:.0f}s | Match: {score:.2f}")
 
-    prompt = (
-        f"USER QUESTION: {query}\n\n"
-        f"RETRIEVED EVENTS ({len(matches)} found):\n"
-        f"{context}\n\n"
-        f"Please answer the question based on these events."
-    )
+    # Formatting Text Results via LLM
+    if mode in ("text", "both"):
+        output_parts.append("\n================= 📝 INTELLIGENCE REPORT ============")
+        context = format_events_for_llm(text_matches)
+        prompt = (
+            f"USER QUESTION: {query}\n\n"
+            f"RETRIEVED EVENTS ({len(text_matches)} found):\n"
+            f"{context}\n\n"
+            f"Please answer the question based on these events."
+        )
+        model = _get_gemini(api_key)
+        response = model.generate_content(prompt)
+        output_parts.append(response.text)
 
-    model    = _get_gemini(api_key)
-    response = model.generate_content(prompt)
-    return response.text
+    return "\n".join(output_parts)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -182,6 +247,7 @@ def main():
     parser.add_argument("--zone",     default=None, help="Filter by zone (e.g. SHELF_AREA)")
     parser.add_argument("--severity", default=None, help="Filter by severity (LOW/MEDIUM/HIGH)")
     parser.add_argument("--camera",   default=None, help="Filter by camera ID (e.g. CAM_01)")
+    parser.add_argument("--mode",     default="text", choices=["text", "video", "both"], help="Search mode")
     parser.add_argument("--api-key",  default=None, dest="api_key",
                         help="Gemini API key (or set GEMINI_API_KEY in config.py)")
     args = parser.parse_args()
@@ -205,6 +271,7 @@ def main():
         if args.severity: print(f"   Filter: severity={args.severity}")
         print()
         answer = ask(args.query, api_key,
+                     mode=args.mode,
                      top_k=args.top_k,
                      zone=args.zone,
                      severity=args.severity,
@@ -238,7 +305,7 @@ def main():
 
             print("\nVisionLog AI: thinking...\n")
             try:
-                answer = ask(q, api_key, top_k=args.top_k,
+                answer = ask(q, api_key, mode=args.mode, top_k=args.top_k,
                              zone=args.zone,
                              severity=args.severity)
                 print(f"VisionLog AI:\n{answer}\n")

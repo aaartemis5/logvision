@@ -1,85 +1,136 @@
 import asyncio
-import io
-import cv2
+import base64
 import json
 import os
+import cv2
+import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from visionlog import config
+from main import run_camera_generator
 from query import ask
 
 app = FastAPI(title="VisionLog AI Dashboard")
 
-# Ensure web directory exists
-os.makedirs("web", exist_ok=True)
+# Mount frontend web assets
+app.mount("/web", StaticFiles(directory="web"), name="web")
 
-# Mount static files for HTML/CSS/JS
-app.mount("/static", StaticFiles(directory="web"), name="static")
-
+# ── API Models ─────────────────────────────────────────────────────────────
 class ChatRequest(BaseModel):
     query: str
-    camera_id: str | None = None # "ALL" or specific CAM_ID
+    mode: str = "both"  # "text", "video", or "both"
 
-@app.get("/", response_class=HTMLResponse)
-async def get_index():
-    with open("web/index.html", "r", encoding="utf-8") as f:
-        return f.read()
+# ── Endpoints ─────────────────────────────────────────────────────────────
 
-@app.get("/api/cameras")
-async def get_cameras():
-    """Return configured cameras for the UI dropdown."""
-    cams = [{"id": cid, "name": cfg["name"]} for cid, cfg in config.CAMERAS.items()]
-    return JSONResponse({"cameras": cams})
+@app.get("/")
+def read_root():
+    """Serve the main UI directly at root."""
+    return StreamingResponse(open("web/index.html", "rb"), media_type="text/html")
 
-@app.post("/api/chat")
-async def chat_api(req: ChatRequest):
-    """RAG query endpoint."""
-    cam_filter = None if req.camera_id in ("ALL", None, "") else req.camera_id
-    
-    # Run the blocking query in a thread pool to not freeze FastAPI
-    try:
-        reply = await asyncio.to_thread(ask, req.query, None, zone=None, severity=None, camera=cam_filter)
-        return JSONResponse({"reply": reply})
-    except Exception as e:
-        return JSONResponse({"reply": f"Error: {str(e)}", "error": True}, status_code=500)
 
-# ── Video Streaming Logic ───────────────────────────────────────────────
-
-def generate_video_feed(camera_id: str):
+def video_stream_generator(camera_id: str, use_pinecone: bool = False):
     """
-    Generator that yields JPEG frames from main.py's processing loop.
-    We need to import main's logic dynamically to avoid starting it on import.
+    Consumes the raw np.ndarray frames from main.py's generator,
+    encodes them as JPEG buffer, and yields them as a Multipart MJPEG stream.
     """
-    from main import run_camera_generator
-    
-    # Find camera config
-    cam_cfg = config.CAMERAS.get(camera_id)
-    if not cam_cfg:
-        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + b"" + b"\r\n"
+    # Fetch cam config directly from dict (matching how CLI operates)
+    if camera_id not in config.CAMERAS:
+        yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n\r\n'
         return
-
-    # Run the generator
-    # use_pinecone=False prevents writing duplicate records to Pinecone every time you view the file
-    for frame_bgr in run_camera_generator(camera_id, cam_cfg, use_pinecone=False):
-        ret, buffer = cv2.imencode('.jpg', frame_bgr)
+        
+    cam_cfg = config.CAMERAS[camera_id]
+    
+    # Run the VisionLog pipeline generator (disable heavy VLM for web streams)
+    for frame in run_camera_generator(camera_id, cam_cfg, use_pinecone=use_pinecone, disable_vlm=True):
+        # Frame is the annotated np.ndarray canvas
+        ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         if not ret:
             continue
+            
         frame_bytes = buffer.tobytes()
+        
+        # Yield in MJPEG format
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-@app.get("/api/video/{camera_id}")
-def video_feed(camera_id: str):
-    """MJPEG streaming endpoint for a specific camera."""
+
+@app.get("/api/camera/stream/{camera_id}")
+async def stream_camera(camera_id: str):
+    """
+    Endpoint that browsers connect to via <img src="/api/camera/stream/CAM_01">
+    It runs VisionLog live!
+    """
+    # We turn off Pinecone during the demo UI stream so it doesn't pollute the index
+    # (since the user will be streaming a pre-recorded file for the MVP)
     return StreamingResponse(
-        generate_video_feed(camera_id), 
+        video_stream_generator(camera_id, use_pinecone=False),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
+
+@app.post("/api/chat")
+async def chat_endpoint(req: ChatRequest):
+    """
+    Endpoint for the AI Inquiry chat bubble.
+    Calls query.py dual-mode logic and returns the raw result.
+    """
+    try:
+        api_key = config.GEMINI_API_KEY
+        if not api_key:
+            return JSONResponse({"error": "No Gemini API key supplied in config."}, status_code=500)
+            
+        print(f"[API] Query received: {req.query} (mode: {req.mode})")
+        
+        # Run dual-query (blocks async loop but fast enough for demo)
+        response_text = ask(
+            query=req.query,
+            api_key=api_key,
+            mode=req.mode
+        )
+        
+        # Parse output nicely for the frontend.
+        # Format returns sections separated by headers.
+        report = ""
+        video_clips = []
+        
+        parts = response_text.split("================= 📝 INTELLIGENCE REPORT ============")
+        if len(parts) == 2:
+            report = parts[1].strip()
+            video_section = parts[0]
+        else:
+            video_section = response_text
+            
+        for line in video_section.split("\n"):
+            line = line.strip()
+            if line.startswith("[") and "Time:" in line:
+                # [1] Time: 0:23 | Camera: Recording.mp4 | Clip: 6s | Match: 0.10
+                parts = line.split("|")
+                time_str = parts[0].split("Time:")[1].strip()
+                cam_str = parts[1].split("Camera:")[1].strip()
+                match_val = float(parts[3].split("Match:")[1].strip())
+                video_clips.append({
+                    "time": time_str,
+                    "camera": cam_str,
+                    "score": match_val,
+                })
+                
+        return {
+            "report": report,
+            "video_evidence": video_clips,
+            "raw_output": response_text
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 if __name__ == "__main__":
-    import uvicorn
-    # Make sure to run the main code, not in the app scope
+    # Ensure web directory exists
+    os.makedirs("web", exist_ok=True)
+    print("🚀 Starting VisionLog UI on http://localhost:8000")
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

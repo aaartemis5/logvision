@@ -111,8 +111,14 @@ HEARTBEAT_FRAMES    = 150   # heartbeat every N frames (~5s @ 30fps, was 300)
 # Copy .env.example → .env and fill in your own keys.
 PINECONE_API_KEY  = os.getenv("PINECONE_API_KEY", "")
 PINECONE_INDEX    = os.getenv("PINECONE_INDEX",   "logvision")
+PINECONE_VIDEO_INDEX = os.getenv("PINECONE_VIDEO_INDEX", "visionlog-video")
 EMBEDDING_MODEL   = "all-MiniLM-L6-v2"        # free, offline, 384-dim
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY",  "")
+TWELVE_LABS_API_KEY = os.getenv("TWELVE_LABS_API_KEY", "")
+
+# ── Video Indexing (Multimodal RAG) ──────────────────────────────────
+ENABLE_VIDEO_INDEX = True                      # Auto-clip and index to Twelve Labs
+VIDEO_CHUNK_S     = 6                          # Duration of each indexed video clip
 
 # ── Output ───────────────────────────────────────────────────────────
 LOG_FILE          = "visionlog_events.log"     # human-readable text log

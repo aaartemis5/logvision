@@ -33,6 +33,7 @@ from visionlog.anomaly.behaviour_window      import BehaviourWindow
 from visionlog.anomaly.risk_scorer           import RiskScorer, AlertEscalator
 from visionlog.events.event_builder          import build_event
 from visionlog.events.event_store            import store
+from visionlog.events.video_archiver         import VideoArchiver
 
 
 def _norm_reason(r: str) -> str:
@@ -40,7 +41,7 @@ def _norm_reason(r: str) -> str:
     return re.sub(r'_\d+s?$', '', r)
 
 
-def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool):
+def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable_vlm: bool = False):
     """Generator yielding annotated frames. Runs the full VisionLog pipeline."""
     print(f"\n{'='*55}")
     print(f"  VisionLog AI — {cam_cfg['name']} ({cam_id})")
@@ -67,11 +68,14 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool):
     gallery   = ReIdGallery()          # Re-ID: persists global IDs across ByteTrack resets
     hand      = HandTracker()
     head      = HeadPoseTracker(window_s=10.0, scan_threshold=3)
-    describer = SceneDescriber()
+    describer = SceneDescriber(disabled=disable_vlm)
     anomaly   = AnomalyDetector(cam_id)
     behaviour = BehaviourWindow(window_s=30.0)
     scorer    = RiskScorer()
     escalator = AlertEscalator(window_s=60.0)
+
+    is_live_source = source.cfg.path == 0 or str(source.cfg.path).startswith("rtsp://")
+    archiver  = VideoArchiver(cam_id, source.fps, int(source.width), int(source.height), is_live=is_live_source)
 
     cam_meta       = source.camera_meta()
     session_id     = f"RUN_{time.strftime('%Y%m%d_%H%M%S')}"
@@ -141,6 +145,10 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool):
             proc_frame = cv2.resize(frame, (config.PROCESS_WIDTH, proc_h))
         else:
             proc_frame = frame
+
+        # ── Video Archiver (Background Video Context RAG) ────────────────
+        if use_pinecone:
+            archiver.add_frame(frame, frame_ts)
 
         # ── Kick off async Florence (non-blocking) ──────────────────────
         if describer.should_run(cam_id):
@@ -346,19 +354,22 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool):
         scorer.evict(active_ids)
         escalator.evict(active_ids)
         gallery.evict_stale_locals(active_ids)   # Re-ID: prune local→global map
-        # Evict smoothed bboxes for tracks no longer active
         for tid in list(smooth_bboxes.keys()):
             if tid not in active_ids:
                 del smooth_bboxes[tid]
+
+    # Flush final video chunk if enabled
+    if use_pinecone:
+        archiver.flush()
 
     print(f"\n[Main] Session {session_id} ended.")
     print(f"  Events logged to: {config.LOG_FILE}")
     print(f"  Full JSON log  : visionlog_events.jsonl")
 
 
-def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool, headless: bool = False):
+def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool, headless: bool = False, disable_vlm: bool = False):
     """Run the CLI version of the camera pipeline."""
-    for frame in run_camera_generator(cam_id, cam_cfg, use_pinecone):
+    for frame in run_camera_generator(cam_id, cam_cfg, use_pinecone, disable_vlm):
         if not headless:
             cv2.imshow(f"VisionLog — {cam_id}", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -373,6 +384,7 @@ def main():
     parser.add_argument("--source",     default=None, help="Override video path")
     parser.add_argument("--no-pinecone", action="store_true", help="Disable Pinecone, log locally")
     parser.add_argument("--headless",   action="store_true", help="Run without UI (for Colab/Servers)")
+    parser.add_argument("--disable-vlm", action="store_true", help="Disable Qwen-VL scene description")
     args = parser.parse_args()
 
     use_pinecone = not args.no_pinecone
@@ -389,7 +401,7 @@ def main():
         cameras[first_key] = {**cameras[first_key], "path": args.source}
 
     for cam_id, cam_cfg in cameras.items():
-        run_camera(cam_id, cam_cfg, use_pinecone, args.headless)
+        run_camera(cam_id, cam_cfg, use_pinecone, args.headless, args.disable_vlm)
 
 
 if __name__ == "__main__":

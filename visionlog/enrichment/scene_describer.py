@@ -23,7 +23,8 @@ class SceneDescriber:
     `last_result(cam_id)` returns the most recently completed caption (or None).
     """
 
-    def __init__(self):
+    def __init__(self, disabled: bool = False):
+        self._disabled    = disabled
         self._model       = None
         self._processor   = None
         self._lock        = threading.Lock()       # guards model load
@@ -43,6 +44,14 @@ class SceneDescriber:
         Kick off a background Florence inference if not already running.
         Returns immediately — call last_result() to get the output.
         """
+        if self._disabled:
+            self._last_result[camera_id] = {
+                "vlm_caption": "VLM Disabled for Web Demo Mode.",
+                "person_count": None,
+                "ocr_text": None,
+            }
+            return
+            
         if self._busy.get(camera_id, False):
             return   # still computing previous request
         self._last_req[camera_id] = time.time()
