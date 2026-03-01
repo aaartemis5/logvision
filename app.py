@@ -5,9 +5,10 @@ import os
 import cv2
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from pathlib import Path
 
 from visionlog import config
 from main import run_camera_generator
@@ -123,6 +124,39 @@ async def chat_endpoint(req: ChatRequest):
             "raw_output": response_text
         }
         
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/media/{camera_filename}")
+async def serve_video(camera_filename: str):
+    """
+    Serves video files for playback in the modal.
+    Maps camera filename to actual video path from config.
+    """
+    try:
+        # Find the camera config that matches this filename
+        video_path = None
+        for cam_id, cam_cfg in config.CAMERAS.items():
+            cam_path = cam_cfg.get("path", "")
+            # Extract just the filename from the full path
+            if Path(cam_path).name == camera_filename:
+                video_path = cam_path
+                break
+        
+        if not video_path or not os.path.exists(video_path):
+            return JSONResponse({"error": f"Video file not found: {camera_filename}"}, status_code=404)
+        
+        return FileResponse(
+            video_path,
+            media_type="video/mp4",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Disposition": f'inline; filename="{camera_filename}"'
+            }
+        )
     except Exception as e:
         import traceback
         traceback.print_exc()

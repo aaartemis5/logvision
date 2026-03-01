@@ -19,7 +19,7 @@ from visionlog import config
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 TOP_K_DEFAULT = 15     # how many events to retrieve per query
-GEMINI_MODEL  = "gemini-2.5-flash-lite"  # free: 15 RPM, 1,000 req/day (most generous free model)
+GEMINI_MODEL  = "gemini-2.5-flash"  # free: 15 RPM, 1,000 req/day (most generous free model)
 SYSTEM_PROMPT = """You are VisionLog AI — a CCTV security analyst assistant for a retail store.
 You are given timestamped surveillance events from a security camera. Answer the operator's question naturally.
 
