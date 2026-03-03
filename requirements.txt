@@ -3,7 +3,6 @@ insightface
 onnxruntime-gpu
 torch
 torchvision
-torchreid
 sentence-transformers
 pinecone-client
 python-dotenv
@@ -17,3 +16,12 @@ qwen-vl-utils
 accelerate
 # Multimodal Video RAG
 twelvelabs
+# SigLIP for unified Re-ID + Attributes
+timm
+sentencepiece
+protobuf
+onnx
+onnxscript
+# OpenVINO for optimization
+openvino>=2024.0.0
+openvino-dev>=2024.0.0

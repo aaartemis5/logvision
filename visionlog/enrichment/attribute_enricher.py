@@ -1,161 +1,14 @@
 """
-enrichment/attribute_enricher.py — InsightFace (age/gender) + CLIP (clothing).
-Both run once per new person and are cached by local_id.
+enrichment/attribute_enricher.py — InsightFace (age/gender) + SigLIP (clothing + Re-ID).
+SigLIP replaces both CLIP and OSNet for unified appearance understanding.
 """
 import cv2
 import numpy as np
 from visionlog.detection.detector import Detection
+from visionlog.enrichment.siglip_describer import get_siglip_describer
 
 
-class ClipDescriber:
-    """
-    CLIP ViT-B/32 zero-shot clothing classifier.
-    Text embeddings are pre-computed at load time; inference is one image forward pass.
-    Returns (clothing_label, unit-norm 512-dim embedding).
-    """
-
-    COLOUR_LABELS = [
-        "black", "white", "grey",   "navy",
-        "blue",  "red",   "green",  "yellow",
-        "orange","purple","brown",  "pink",
-    ]
-    COLOUR_PROMPTS = [
-        f"a photo of a person wearing {c} colored clothes" for c in COLOUR_LABELS
-    ]
-
-    GARMENT_LABELS = ["hoodie", "t-shirt", "jacket", "shirt", "sweater", "uniform"]
-    GARMENT_PROMPTS = [
-        "a photo of a person wearing a hoodie or sweatshirt",
-        "a photo of a person wearing a t-shirt",
-        "a photo of a person wearing a jacket or coat",
-        "a photo of a person wearing a collared shirt",
-        "a photo of a person wearing a sweater or jumper",
-        "a photo of a person wearing a work uniform",
-    ]
-
-    def __init__(self):
-        self._processor      = None
-        self._model          = None
-        self._colour_embeds  = None
-        self._garment_embeds = None
-
-    def _load(self):
-        import torch
-        from transformers import CLIPProcessor, CLIPModel
-        print("[CLIP] Loading openai/clip-vit-base-patch32 …", flush=True)
-        self._processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-        self._model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-        self._model.eval()
-        with torch.no_grad():
-            c_in   = self._processor(text=self.COLOUR_PROMPTS,  return_tensors="pt", padding=True)
-            c_feat = self._model.get_text_features(**c_in)
-            if not isinstance(c_feat, torch.Tensor):
-                if hasattr(c_feat, 'text_embeds') and c_feat.text_embeds is not None:
-                    c_feat = c_feat.text_embeds
-                else:
-                    pooler = c_feat.pooler_output if hasattr(c_feat, 'pooler_output') else c_feat[1]
-                    c_feat = self._model.text_projection(pooler)
-            self._colour_embeds = c_feat / c_feat.norm(dim=-1, keepdim=True)
-
-            g_in   = self._processor(text=self.GARMENT_PROMPTS, return_tensors="pt", padding=True)
-            g_feat = self._model.get_text_features(**g_in)
-            if not isinstance(g_feat, torch.Tensor):
-                if hasattr(g_feat, 'text_embeds') and g_feat.text_embeds is not None:
-                    g_feat = g_feat.text_embeds
-                else:
-                    pooler = g_feat.pooler_output if hasattr(g_feat, 'pooler_output') else g_feat[1]
-                    g_feat = self._model.text_projection(pooler)
-            self._garment_embeds = g_feat / g_feat.norm(dim=-1, keepdim=True)
-        print("[CLIP] Ready.", flush=True)
-
-    def describe(self, person_bgr: np.ndarray) -> tuple[str, np.ndarray | None]:
-        """Returns (clothing_label, unit-norm embedding) or ('unknown', None) on failure."""
-        if person_bgr is None or person_bgr.size == 0:
-            return "unknown", None
-
-        h, w = person_bgr.shape[:2]
-        if min(h, w) < 112:
-            scale      = 112 / min(h, w)
-            person_bgr = cv2.resize(person_bgr, (int(w*scale), int(h*scale)),
-                                    interpolation=cv2.INTER_LINEAR)
-        try:
-            import torch
-            from PIL import Image
-            if self._model is None:
-                self._load()
-
-            pil_img  = Image.fromarray(cv2.cvtColor(person_bgr, cv2.COLOR_BGR2RGB))
-            with torch.no_grad():
-                img_in   = self._processor(images=pil_img, return_tensors="pt")
-                img_feat = self._model.get_image_features(**img_in)
-                if not isinstance(img_feat, torch.Tensor):
-                    if hasattr(img_feat, 'image_embeds') and img_feat.image_embeds is not None:
-                        img_feat = img_feat.image_embeds
-                    else:
-                        pooler = img_feat.pooler_output if hasattr(img_feat, 'pooler_output') else img_feat[1]
-                        img_feat = self._model.visual_projection(pooler)
-                img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
-
-                colour  = self.COLOUR_LABELS[(img_feat @ self._colour_embeds.T).squeeze(0).argmax().item()]
-                garment = self.GARMENT_LABELS[(img_feat @ self._garment_embeds.T).squeeze(0).argmax().item()]
-
-            return f"{colour} {garment}", img_feat.squeeze(0).cpu().numpy().astype(np.float32)
-        except Exception as e:
-            print(f"[CLIP] {e}")
-            return "unknown", None
-
-
-_clip_describer = ClipDescriber()
-
-
-class OsNetDescriber:
-    """
-    OSNet-x0.25 person Re-ID feature extractor (via torchreid).
-    Returns a 512-dim unit-norm embedding for identity matching.
-    Uses full person bbox at 256×128 — the standard input for person Re-ID models.
-    """
-
-    def __init__(self):
-        self._model     = None
-        self._transform = None
-
-    def _load(self):
-        import torchreid
-        import torchvision.transforms as T
-        print("[OSNet] Loading osnet_x0_25...", flush=True)
-        self._model = torchreid.models.build_model(
-            name='osnet_x0_25', num_classes=1000, pretrained=True
-        )
-        self._model.eval()
-        self._transform = T.Compose([
-            T.ToPILImage(),
-            T.Resize((256, 128)),
-            T.ToTensor(),
-            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-        print("[OSNet] Ready.", flush=True)
-
-    def embed(self, person_bgr: np.ndarray) -> np.ndarray | None:
-        """Returns 512-dim unit-norm Re-ID embedding or None on failure."""
-        if person_bgr is None or person_bgr.size == 0:
-            return None
-        try:
-            import torch
-            if self._model is None:
-                self._load()
-            rgb = cv2.cvtColor(person_bgr, cv2.COLOR_BGR2RGB)
-            x   = self._transform(rgb).unsqueeze(0)   # (1, 3, 256, 128)
-            with torch.no_grad():
-                feats = self._model(x)                 # (1, 512) in eval mode
-            emb  = feats.squeeze(0).cpu().numpy().astype(np.float32)
-            norm = np.linalg.norm(emb)
-            return (emb / norm) if norm > 0 else emb
-        except Exception as e:
-            print(f"[OSNet] {e}")
-            return None
-
-
-_osnet_describer = OsNetDescriber()
+_siglip_describer = get_siglip_describer()
 
 _insight_app = None
 
@@ -212,22 +65,19 @@ class AttributeEnricher:
             except Exception:
                 pass
 
-        # CLIP — upper 65% of bbox for clothing label
-        ub        = min(h, y1 + int((y2-y1)*0.65))
-        clip_crop = frame[max(0,y1):ub, max(0,x1):min(w,x2)]
-        clothing, clip_embedding = _clip_describer.describe(clip_crop)
-
-        # OSNet — full person bbox for identity Re-ID embedding
-        reid_crop      = frame[max(0,y1):min(h,y2), max(0,x1):min(w,x2)]
-        reid_embedding = _osnet_describer.embed(reid_crop)
+        # SigLIP — unified clothing description + Re-ID embedding
+        # Use upper 70% of bbox for better clothing visibility
+        ub = min(h, y1 + int((y2-y1)*0.70))
+        siglip_crop = frame[max(0,y1):ub, max(0,x1):min(w,x2)]
+        clothing, reid_embedding = _siglip_describer.describe(siglip_crop)
 
         return {
             "age":            age,
             "gender":         gender,
             "emotion":        None,
             "clothing_desc":  clothing,
-            "clip_embedding": clip_embedding,   # kept for legacy / debug
-            "reid_embedding": reid_embedding,   # OSNet vector — use this in ReID gallery
+            "reid_embedding": reid_embedding,   # 768-dim from SigLIP (replaces OSNet)
+            "clip_embedding": None,              # Deprecated - kept for compatibility
         }
 
     def evict(self, active_ids: set[int]):

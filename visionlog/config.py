@@ -69,7 +69,7 @@ ZONES = {
 }
 
 # ── Detection ────────────────────────────────────────────────────────
-YOLO_MODEL        = "yolo11l-pose.pt"     # Large model: better pose accuracy, slower CPU inference
+YOLO_MODEL        = "yolo26l-pose.pt"     # YOLO26 Large: NMS-free, faster inference, better accuracy
 TRACKER           = "botsort_reid.yaml"  # BoT-SORT + appearance ReID enabled
 YOLO_CONF         = 0.4                 # detection confidence threshold
 YOLO_CLASSES      = [0]                 # 0 = person only. Remove to detect all 80 classes.

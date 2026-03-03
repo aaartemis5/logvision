@@ -1,14 +1,16 @@
 """
-enrichment/reid_gallery.py — Gallery-based person Re-ID using CLIP embeddings.
+enrichment/reid_gallery.py — Gallery-based person Re-ID using SigLIP embeddings.
 
 Each new ByteTrack local_id is compared to stored appearance vectors.
 If cosine similarity ≥ REID_THRESHOLD the existing global_id is restored,
 otherwise a new one (G1, G2, …) is created.
+
+Updated for SigLIP: Higher threshold (0.75) due to better semantic understanding.
 """
 import time
 import numpy as np
 
-REID_THRESHOLD = 0.65   # realistic for ImageNet OSNet on overhead CCTV (0.65-0.80 range)
+REID_THRESHOLD = 0.75   # SigLIP has better discrimination (was 0.65 for OSNet)
 EXPIRE_S       = 600    # forget a person after 10 min of inactivity
 MAX_GALLERY    = 100
 
