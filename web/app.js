@@ -232,13 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         lucide.createIcons({ root: msg });
         scrollToBottom();
 
-        // 3. Auto-pop the modal overlay as the user requested
-        if (data.video_evidence && data.video_evidence.length > 0) {
-            // Slight delay to ensure DOM is ready
-            setTimeout(() => {
-                openVideoModal(data.video_evidence);
-            }, 200);
-        }
+        // REMOVED: Auto-popup behavior - user can click button to open modal
     }
 
     window.openVideoModal = openVideoModal; // Expose globally for the onclick handler
