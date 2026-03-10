@@ -24,6 +24,7 @@ body {
     background-color: var(--bg-dark);
     color: var(--text-primary);
     min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -31,6 +32,8 @@ body {
     background-image:
         radial-gradient(circle at 15% 50%, rgba(6, 182, 212, 0.05), transparent 25%),
         radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.05), transparent 25%);
+    margin: 0;
+    padding: 0;
 }
 
 /* ── Navigation ── */
@@ -114,11 +117,13 @@ body {
 .app-container {
     display: flex;
     flex: 1;
-    padding: 24px;
-    gap: 24px;
+    padding: 16px;
+    gap: 16px;
     height: calc(100vh - 60px);
+    max-height: calc(100vh - 60px);
     min-height: 0;
     /* CRITICAL FOR FLEX SCROLLING */
+    overflow: hidden;
 }
 
 .glass-panel {
@@ -130,6 +135,8 @@ body {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    padding: 0;
+    margin: 0;
 }
 
 /* ── Live Stream Panel ── */
@@ -137,6 +144,7 @@ body {
     flex: 7;
     /* 70% width */
     display: flex;
+    min-height: 0;
 }
 
 .video-container {
@@ -148,12 +156,17 @@ body {
     align-items: center;
     background: #000;
     /* Black behind video */
+    padding: 0;
+    margin: 0;
 }
 
 #live-stream-img {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    display: block;
+    margin: 0;
+    padding: 0;
 }
 
 .video-overlay-ui {
@@ -194,6 +207,11 @@ body {
     flex: 3;
     /* 30% width */
     min-width: 380px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
 }
 
 .chat-header {
@@ -202,6 +220,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .chat-header h3 {
@@ -210,6 +229,60 @@ body {
     align-items: center;
     gap: 8px;
     color: var(--text-primary);
+}
+
+/* ── Toggle Switch ── */
+.toggle-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.toggle-switch input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-switch .slider {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    border: 1px solid var(--border-color);
+    transition: all 0.3s;
+}
+
+.toggle-switch .slider::before {
+    content: "";
+    position: absolute;
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    top: 2px;
+    background: var(--text-secondary);
+    border-radius: 50%;
+    transition: all 0.3s;
+}
+
+.toggle-switch input:checked + .slider {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    border-color: var(--accent-cyan);
+}
+
+.toggle-switch input:checked + .slider::before {
+    transform: translateX(20px);
+    background: white;
+}
+
+.toggle-switch .label-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
 }
 
 .chat-history {
@@ -222,6 +295,44 @@ body {
     flex-direction: column;
     gap: 20px;
     scroll-behavior: smooth;
+    min-height: 0;
+}
+
+/* Custom Scrollbar Styling */
+.chat-history::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-history::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.chat-history::-webkit-scrollbar-thumb {
+    background: rgba(6, 182, 212, 0.3);
+    border-radius: 4px;
+}
+
+.chat-history::-webkit-scrollbar-thumb:hover {
+    background: rgba(6, 182, 212, 0.5);
+}
+
+#modal-sidebar-clips::-webkit-scrollbar {
+    width: 6px;
+}
+
+#modal-sidebar-clips::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+#modal-sidebar-clips::-webkit-scrollbar-thumb {
+    background: rgba(6, 182, 212, 0.3);
+    border-radius: 3px;
+}
+
+#modal-sidebar-clips::-webkit-scrollbar-thumb:hover {
+    background: rgba(6, 182, 212, 0.5);
 }
 
 /* Message Styles */
@@ -282,6 +393,9 @@ body {
     line-height: 1.5;
     color: var(--text-primary);
     border: 1px solid var(--border-color);
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .message-user .bubble {
@@ -409,6 +523,7 @@ body {
     padding: 16px 20px;
     border-top: 1px solid var(--border-color);
     background: rgba(15, 23, 42, 0.4);
+    flex-shrink: 0;
 }
 
 #chat-form {
@@ -500,4 +615,184 @@ body {
     to {
         opacity: 1;
     }
+}
+
+/* ── Video Modal Overlay ── */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-overlay.hidden {
+    display: none;
+}
+
+.modal-content {
+    width: 90%;
+    max-width: 1200px;
+    height: 80vh;
+    max-height: 800px;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.modal-header h3 {
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+}
+
+#close-modal-btn {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: var(--danger);
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#close-modal-btn:hover {
+    background: rgba(239, 68, 68, 0.3);
+    transform: scale(1.05);
+}
+
+.modal-body {
+    flex: 1;
+    display: flex;
+    gap: 20px;
+    padding: 20px 24px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.modal-main-video {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border-color);
+}
+
+#modal-video-player {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+#modal-video-info {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(0, 0, 0, 0.9);
+    color: var(--accent-cyan);
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.modal-sidebar {
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+#modal-sidebar-clips {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+#modal-sidebar-clips .secondary-clip {
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#modal-sidebar-clips .secondary-clip:hover {
+    background: rgba(6, 182, 212, 0.1);
+    border-color: var(--accent-cyan);
+    transform: translateX(4px);
+}
+
+/* ── Video Evidence Button in Chat ── */
+.open-evidence-btn {
+    width: 100%;
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(59, 130, 246, 0.2));
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s;
+    margin-top: 12px;
+}
+
+.open-evidence-btn:hover {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(59, 130, 246, 0.3));
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+}
+
+.open-evidence-btn:active {
+    transform: translateY(0);
+}
+
+/* ── Utility Classes ── */
+.hidden {
+    display: none !important;
 }
