@@ -25,9 +25,9 @@ The live analytics stream runs in a browser-based dashboard alongside the AI inq
 
 ## Demo
 
-> 📹 *Demo video coming soon — attach your demo video here.*
 
-![Dashboard Preview](web/preview.png)
+https://drive.google.com/file/d/1S2TRzT2ZCbwqU5qCs21ysNRVv9f9U0ZO/view?usp=sharing
+
 
 ---
 
