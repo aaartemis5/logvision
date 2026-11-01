@@ -62,8 +62,11 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
         direction = cam_cfg.get("direction", ""),
     )
     source    = VideoSource(src_cfg)
-    zones     = ZoneManager(cam_id, source.width, source.height)
-    detector  = Detector(cam_id, source.width, source.height,
+    proc_w    = config.PROCESS_WIDTH if config.PROCESS_WIDTH and source.width > config.PROCESS_WIDTH else int(source.width)
+    scale_w   = proc_w / source.width
+    proc_h    = int(source.height * scale_w)
+    zones     = ZoneManager(cam_id, proc_w, proc_h)
+    detector  = Detector(cam_id, proc_w, proc_h,
                          zone_fn=zones.get_zone)
     enricher  = AttributeEnricher()
     gallery   = ReIdGallery()          # Re-ID: persists global IDs across ByteTrack resets
