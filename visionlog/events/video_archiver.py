@@ -1,3 +1,4 @@
+import base64
 import os
 import time
 import threading
@@ -121,8 +122,7 @@ class VideoArchiver:
                     model_name="marengo3.0",
                     video=VideoInputRequest(
                         media_source=MediaSource(
-                            method="direct",
-                            file=open(str(filepath), "rb")
+                            base64_string=base64.b64encode(open(str(filepath), "rb").read()).decode("utf-8")
                         ),
                         embedding_option=["visual"],
                         embedding_scope=["asset"] # One embedding for the whole 6s chunk

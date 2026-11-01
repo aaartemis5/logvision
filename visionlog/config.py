@@ -22,15 +22,6 @@ CAMERAS = {
         "lon":      None,
         "floor":    1,
         "direction": "north",
-    },
-    "CAM_02": {
-        "name":     "Seating Area B",
-        "path":     r"C:/Users/Aditya/.gemini/antigravity/brain/1a3f029a-c725-4934-8bc8-3845ccc3d77d/.user_uploaded/media_1793548913656_6bfb0597.mp4",
-        "location": "Seating Study Room",
-        "lat":      None,
-        "lon":      None,
-        "floor":    1,
-        "direction": "south",
     }
 }
 
