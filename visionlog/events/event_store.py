@@ -56,8 +56,12 @@ def store(event: dict, use_pinecone: bool = True):
     with open(config.LOG_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-    # ── Pinecone upsert ───────────────────────────────────────────────
-    if use_pinecone and config.PINECONE_API_KEY != "YOUR_PINECONE_API_KEY":
+    # ── Always write full JSON locally ────────────────────────────────
+    with open("visionlog_events.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(event) + "\n")
+
+    # ── Pinecone upsert (if enabled and configured) ───────────────────
+    if use_pinecone and config.PINECONE_API_KEY and config.PINECONE_API_KEY != "YOUR_PINECONE_API_KEY":
         try:
             embedder = _get_embedder()
             vector   = embedder.encode(text).tolist()
@@ -74,11 +78,12 @@ def store(event: dict, use_pinecone: bool = True):
                 "is_night":    event["time"]["is_night"],
                 "person_id":   event["person"]["local_id"],
                 "zone":        event["detection"]["zone"],
+                "seat_id":     event.get("seat", {}).get("seat_id") or "",
                 "pose":        event["pose"]["label"],
                 "event_type":  event["event_type"],
                 "is_anomaly":  event["anomaly"]["is_anomaly"],
                 "severity":    event["anomaly"].get("severity", "NORMAL"),
-                "text":        text[:500],   # Pinecone metadata has size limits
+                "text":        text[:500],
             }
 
             index.upsert(vectors=[{
@@ -87,8 +92,4 @@ def store(event: dict, use_pinecone: bool = True):
                 "metadata": flat_meta,
             }])
         except Exception as e:
-            print(f"[EventStore] Pinecone error (event still logged locally): {e}")
-    else:
-        # Save full JSON locally instead
-        with open("visionlog_events.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps(event) + "\n")
+            print(f"[EventStore] Pinecone error: {e}")

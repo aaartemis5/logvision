@@ -46,7 +46,7 @@ class SceneDescriber:
         """
         if self._disabled:
             self._last_result[camera_id] = {
-                "vlm_caption": "VLM Disabled for Web Demo Mode.",
+                "vlm_caption": "Scene description disabled.",
                 "person_count": None,
                 "ocr_text": None,
             }
@@ -107,14 +107,12 @@ class SceneDescriber:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_img   = Image.fromarray(frame_rgb)
 
-            task   = (
-                "You are a retail security analyst reviewing a live CCTV frame. "
-                "Ignore normal shopping behaviour. ONLY respond if you see something suspicious or security-relevant. "
-                "If you detect suspicious behaviour, immediately flag it and provide: "
-                "(1) a description of the person — their clothing colour, garment type, approximate build; "
-                "(2) their exact location in the store (e.g. near shelves, checkout, entrance); "
-                "(3) precisely what they are doing that is suspicious (e.g. concealing items, loitering, unusual movements). "
-                "If there is nothing suspicious, respond with exactly: 'No suspicious activity detected.'"
+            task = (
+                "You are analysing one frame from a seating study. In at most two sentences describe: "
+                "how many people are seated, which seats are occupied, the posture of each seated person "
+                "(upright, slouched, leaning, perched on the edge, lying), and whether the seat next to an occupied seat is used. "
+                "Mention clothing colour only to tell people apart. Do not guess identity or intent. "
+                "If nobody is seated respond exactly: 'No one is seated.'"
             )
             messages = [
                 {

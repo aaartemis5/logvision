@@ -18,6 +18,12 @@ from visionlog import config
 
 # ── Signal weights ────────────────────────────────────────────────────────────
 SIGNAL_WEIGHTS: dict[str, int] = {
+    'sit_down':                      5,
+    'stand_up':                      5,
+    'abrupt_sit':                   25,
+    'seat_switch':                  15,
+    'neighbour_seat_occupied':      10,
+    'restless_head_movement':       20,
     'dwell_exceeded':                4,
     'reaching_in_shelf':            15,
     'reaching':                     12,

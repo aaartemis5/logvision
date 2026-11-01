@@ -1,5 +1,5 @@
 """
-query.py — VisionLog RAG Query Interface
+query.py — REST RAG Query Interface
 =========================================
 Ask natural language questions about your CCTV events stored in Pinecone.
 
@@ -20,28 +20,9 @@ from visionlog import config
 # ── Constants ─────────────────────────────────────────────────────────────────
 TOP_K_DEFAULT = 15     # how many events to retrieve per query
 GEMINI_MODEL  = "gemini-2.5-flash"  # free: 15 RPM, 1,000 req/day (most generous free model)
-SYSTEM_PROMPT = """You are VisionLog AI — a CCTV security analyst assistant for a retail store.
-You are given timestamped surveillance events from a security camera. Answer the operator's question naturally.
-
-STYLE RULES (follow strictly):
-- Speak like a security supervisor briefing their team. Professional but plain English.
-- Describe people by APPEARANCE and BEHAVIOUR, not internal tracking numbers.
-  Good: "a woman in a navy jacket near the shelves at 11:45am"
-  Bad: "Person #13 in SHELF_AREA with risk_score 42"
-- Reference TIME and ZONE to anchor every observation.
-- Synthesise related events into a narrative, not a mechanical list.
-- Flag genuine risk clearly and explain WHY it is concerning (e.g. long dwell + reaching gesture = potential concealment).
-- If nothing relevant was found, say so plainly.
-
-FORMAT:
-- Lead with the most important finding.
-- Use short bullet points only when listing multiple separate incidents.
-- Keep the full response under 200 words unless the question is complex.
-
-AVOID:
-- Do not mention internal IDs (Person #X, local_id, global_id).
-- Do not mention technical terms (risk_score, confidence, similarity score, YOLO, vector).
-- Do not repeat the same event twice in different words.
+SYSTEM_PROMPT = """You are REST — an assistant that answers questions about seating behaviour from timestamped events recorded in a seating study. Answer like a researcher briefing a design engineer.
+Describe people by clothing and behaviour, not tracking numbers. Reference time and seat to anchor every observation. Report seated durations, sit-down and stand-up moments, abrupt sitting, posture changes, head-turn restlessness and neighbouring-seat use when relevant.
+Say plainly if nothing relevant was found. Lead with the most important finding; keep under 200 words unless the question is complex. Do not mention internal IDs or technical terms (score, confidence, similarity, YOLO, vector). Do not repeat an event in different words.
 """
 
 
@@ -237,7 +218,7 @@ def ask(query: str,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="VisionLog RAG Query — ask questions about your CCTV events"
+        description="REST RAG Query — ask questions about your CCTV events"
     )
     parser.add_argument("query",   nargs="?",       default=None,
                         help="Question to ask (omit for interactive mode)")
@@ -283,12 +264,12 @@ def main():
     else:
         # Interactive chat mode
         print("\n" + "=" * 60)
-        print("  VisionLog RAG — Interactive Query Mode")
+        print("  REST RAG — Interactive Query Mode")
         print("  Type your question, or 'quit' to exit.")
         print("  Examples:")
-        print("    Who was the most suspicious person today?")
-        print("    Show me all HIGH risk events at the shelves")
-        print("    Summarise what happened in the ENTRANCE zone")
+        print("    Show me someone who sat down abruptly")
+        print("    How long was Seat A occupied?")
+        print("    Did anyone move to the neighbouring seat?")
         print("=" * 60 + "\n")
 
         while True:
@@ -303,12 +284,12 @@ def main():
                 print("Goodbye!")
                 break
 
-            print("\nVisionLog AI: thinking...\n")
+            print("\nREST: thinking...\n")
             try:
                 answer = ask(q, api_key, mode=args.mode, top_k=args.top_k,
                              zone=args.zone,
                              severity=args.severity)
-                print(f"VisionLog AI:\n{answer}\n")
+                print(f"REST:\n{answer}\n")
                 print("-" * 60)
             except Exception as e:
                 print(f"[Error] {e}\n")

@@ -1,5 +1,5 @@
 """
-config.py — Central configuration for VisionLog AI
+config.py — Central configuration for REST
 Edit this file to configure cameras, zones, and thresholds.
 Secrets (API keys) are loaded from a local .env file — never commit .env to git.
 """
@@ -15,18 +15,18 @@ except ImportError:
 # Add each camera here. Path can be: file path, 0 (webcam), or an RTSP URL.
 CAMERAS = {
     "CAM_01": {
-        "name":     "Store Front",
-        "path":     r"C:\Users\Aditya\OneDrive\Pictures\Screenshots\Recording 2026-02-25 162753.mp4",
-        "location": "Aisle 1, main entrance",
+        "name":     "Seating Area A",
+        "path":     r"C:/Users/Aditya/.gemini/antigravity/brain/1a3f029a-c725-4934-8bc8-3845ccc3d77d/.user_uploaded/media_1793548913656_6bfb0597.mp4",
+        "location": "Seating Study Room",
         "lat":      None,
         "lon":      None,
         "floor":    1,
         "direction": "north",
     },
     "CAM_02": {
-        "name":     "Checkout Counter",
-        "path":     r"C:\Users\Aditya\OneDrive\Pictures\Screenshots\Recording 2026-02-25 161441.mp4",
-        "location": "Checkout area",
+        "name":     "Seating Area B",
+        "path":     r"C:/Users/Aditya/.gemini/antigravity/brain/1a3f029a-c725-4934-8bc8-3845ccc3d77d/.user_uploaded/media_1793548913656_6bfb0597.mp4",
+        "location": "Seating Study Room",
         "lat":      None,
         "lon":      None,
         "floor":    1,
@@ -39,29 +39,9 @@ CAMERAS = {
 # Example: (0.0, 0.0) = top-left corner, (1.0, 1.0) = bottom-right corner.
 ZONES = {
     "CAM_01": {
-        # ── Derived from CCTV image analysis ─────────────────────────
-        # Camera is high-angle, wide shot. Store reads left→right:
-        # checkout | promo stands | shelving wall | entrance door (bottom-right)
-
-        # Far left strip — POS terminal, staff, customer queue
-        "CHECKOUT":     [(0.00, 0.00), (0.18, 0.00),
-                         (0.18, 0.95), (0.00, 0.95)],
-
-        # Mid-floor — large red display units and wire produce baskets
-        "DISPLAY_AREA": [(0.18, 0.12), (0.52, 0.12),
-                         (0.52, 0.88), (0.18, 0.88)],
-
-        # Right side — main product shelves (black shelving units)
-        "SHELF_AREA":   [(0.52, 0.15), (0.95, 0.15),
-                         (0.95, 0.88), (0.52, 0.88)],
-
-        # Bottom right — glass entrance door and adjacent wall
-        "ENTRANCE":     [(0.55, 0.88), (1.00, 0.88),
-                         (1.00, 1.00), (0.35, 1.00)],
-
-        # Top strip — back-of-store aisle (far end of shelving)
-        "BACK_AISLE":   [(0.18, 0.00), (0.52, 0.00),
-                         (0.52, 0.12), (0.18, 0.12)],
+        "SEAT_A": [(0.20, 0.35), (0.45, 0.35), (0.45, 0.88), (0.20, 0.88)],
+        "SEAT_B": [(0.50, 0.25), (0.85, 0.25), (0.85, 0.90), (0.50, 0.90)],
+        "AISLE":  [(0.00, 0.00), (1.00, 0.00), (1.00, 1.00), (0.00, 1.00)],
     },
     "CAM_02": {
         "GENERAL_AREA": [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
@@ -92,7 +72,7 @@ NIGHT_HOURS       = (22, 6) # 10pm–6am = elevated anomaly weight
 
 # ── Zone-Specific Dwell Rules ─────────────────────────────────────────
 # Zones where long dwell is completely normal — skip dwell_exceeded rule.
-DWELL_EXEMPT_ZONES = {"CHECKOUT", "BACK_AISLE"}  # queuing / browsing far shelves
+DWELL_EXEMPT_ZONES = {"AISLE", "GENERAL_AREA"}  # queuing / browsing far shelves
 
 # ── Risk Scoring (Intelligence Layer) ────────────────────────────────
 RISK_LOW          = 25     # score threshold → LOW severity
@@ -126,3 +106,13 @@ SAVE_ANOMALY_CLIPS = True                      # save 30s clip on anomaly
 CLIP_BUFFER_S     = 15                         # seconds before+after anomaly
 CLIP_OUTPUT_DIR   = "clips/"
 SCHEMA_VERSION    = "1.0"
+
+
+# ── Seating Study (REST) ─────────────────────────────────────────────
+RETAIL_RULES_ENABLED   = False      # old shoplifting rules stay in code but are switched off
+SEAT_ZONES             = {"CAM_01": ["SEAT_A", "SEAT_B"], "CAM_02": []}
+SEAT_NEIGHBOURS        = {"CAM_01": [("SEAT_A", "SEAT_B")], "CAM_02": []}
+SIT_CONFIRM_S          = 0.6    # must be SITTING in a seat zone this long to count as a sit-down
+STAND_CONFIRM_S        = 1.0    # must be out of SITTING / out of seat this long to count as stand-up
+ABRUPT_SIT_TORSO_PER_S = 1.0    # downward hip speed (torso-lengths/s) threshold for abrupt sit
+SEAT_SWITCH_WINDOW_S   = 30.0   # sit in a neighbouring seat within this time = seat switch

@@ -23,6 +23,7 @@ from visionlog import config
 from visionlog.sources.video_source import VideoSource, SourceConfig
 from visionlog.detection.detector   import Detector
 from visionlog.zones.zone_manager   import ZoneManager
+from visionlog.anomaly.seat_tracker import SeatTracker
 from visionlog.enrichment.attribute_enricher import AttributeEnricher
 from visionlog.enrichment.reid_gallery        import ReIdGallery
 from visionlog.enrichment.hand_tracker        import HandTracker
@@ -44,7 +45,7 @@ def _norm_reason(r: str) -> str:
 def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable_vlm: bool = False):
     """Generator yielding annotated frames. Runs the full VisionLog pipeline."""
     print(f"\n{'='*55}")
-    print(f"  VisionLog AI — {cam_cfg['name']} ({cam_id})")
+    print(f"  REST — {cam_cfg['name']} ({cam_id})")
     print(f"  Source : {cam_cfg['path']}")
     print(f"  Pinecone: {'enabled' if use_pinecone else 'disabled (logging locally)'}")
     print(f"{'='*55}\n")
@@ -69,6 +70,7 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
     hand      = HandTracker()
     head      = HeadPoseTracker(window_s=10.0, scan_threshold=3)
     describer = SceneDescriber(disabled=disable_vlm)
+    seat_tracker = SeatTracker(cam_id)
     anomaly   = AnomalyDetector(cam_id)
     behaviour = BehaviourWindow(window_s=30.0)
     scorer    = RiskScorer()
@@ -91,6 +93,12 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
 
     def _draw_boxes(canvas, dets, sx, sy, s_bboxes, alpha, anom_ids):
         """EMA-smooth then draw bboxes + contrast labels. Modifies canvas in-place."""
+        # COCO skeleton edges
+        skeleton_edges = [
+            (5,7),(7,9),(6,8),(8,10),(5,6),(5,11),(6,12),
+            (11,12),(11,13),(13,15),(12,14),(14,16),
+            (0,1),(0,2),(1,3),(2,4)
+        ]
         for det in dets:
             x1, y1, x2, y2 = det.bbox
             x1, y1, x2, y2 = x1*sx, y1*sy, x2*sx, y2*sy
@@ -105,9 +113,22 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
             ix1,iy1,ix2,iy2 = int(x1),int(y1),int(x2),int(y2)
             color = (0,60,255) if tid in anom_ids else (0,220,100)
             cv2.rectangle(canvas, (ix1,iy1), (ix2,iy2), color, 2)
-            # Label: show global_id badge [Gn] when available
+
+            # Draw skeleton lines
+            kps = det.keypoints
+            confs = det.kp_conf
+            if kps and confs:
+                for p1, p2 in skeleton_edges:
+                    if p1 < len(kps) and p2 < len(kps):
+                        if confs[p1] >= 0.3 and confs[p2] >= 0.3:
+                            pt1 = (int(kps[p1][0] * sx), int(kps[p1][1] * sy))
+                            pt2 = (int(kps[p2][0] * sx), int(kps[p2][1] * sy))
+                            cv2.line(canvas, pt1, pt2, (255, 200, 0), 2)
+
+            # Label: show global_id badge and seat if in seat zone
             gid_badge = f" [{det.global_id}]" if det.global_id else ""
-            label = f"#{tid}{gid_badge} {det.pose}"
+            seat_badge = f" | {det.zone}" if det.zone in config.SEAT_ZONES.get(det.camera_id, []) else ""
+            label = f"#{tid}{gid_badge} {det.pose}{seat_badge}"
             font, fs, th_px = cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
             (tw, tah), bl = cv2.getTextSize(label, font, fs, th_px)
             lx = ix1
@@ -181,14 +202,15 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
                 clothing  = attrs.get('clothing_desc', 'unknown'),
             )
 
-            # ── Hand gesture tracking (every frame) ───────────────────
-            hand_result = hand.track(det.local_id, det.bbox, proc_frame)
+            # ── Hand gesture tracking (skipped in seating study) ─────
+            hand_result = hand.track(det.local_id, det.bbox, proc_frame) if getattr(config, "RETAIL_RULES_ENABLED", False) else {}
 
             # ── Head pose + surveillance-checking detection ────────────
             head_result = head.update(det.local_id, det.keypoints, det.kp_conf)
 
-            # ── Anomaly check (passes hand + head context) ───────────
-            anom_result = anomaly.evaluate(det, hand_result, head_result)
+            # ── Seat Tracker & Event Evaluation ───────────────────────
+            seat_events = seat_tracker.update(det)
+            anom_result = anomaly.evaluate(det, hand_result, head_result, seat_events=seat_events)
 
             # ── Decide whether to log this frame ─────────────────────
             prev = last_state.get(tid, {})
@@ -278,6 +300,8 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
             person_cd = cooldown_map.setdefault(tid, {})
 
             def _should_log() -> bool:
+                if seat_events:
+                    return True           # always log sit / stand events
                 if pose_zone_changed:
                     return True           # always log real transitions
                 if fn % config.HEARTBEAT_FRAMES == 0:
@@ -327,6 +351,7 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
                 hand_result   = hand_result,
                 head_result   = head_result,
                 risk_data     = risk_data,
+                seat_events   = seat_events,
             )
             store(event, use_pinecone=use_pinecone)
 
@@ -348,6 +373,7 @@ def run_camera_generator(cam_id: str, cam_cfg: dict, use_pinecone: bool, disable
         # ── Cleanup stale tracks ──────────────────────────────────────
         anomaly.cleanup_stale(active_ids)
         enricher.evict(active_ids)
+        seat_tracker.evict(active_ids)
         hand.reset_stale(active_ids)
         head.evict(active_ids)
         behaviour.evict(active_ids)
@@ -371,7 +397,7 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool, headless: bool = 
     """Run the CLI version of the camera pipeline."""
     for frame in run_camera_generator(cam_id, cam_cfg, use_pinecone, disable_vlm):
         if not headless:
-            cv2.imshow(f"VisionLog — {cam_id}", frame)
+            cv2.imshow(f"REST — {cam_id}", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
     if not headless:
@@ -379,7 +405,7 @@ def run_camera(cam_id: str, cam_cfg: dict, use_pinecone: bool, headless: bool = 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="VisionLog AI")
+    parser = argparse.ArgumentParser(description="REST")
     parser.add_argument("--camera",     default=None, help="Camera ID from config")
     parser.add_argument("--source",     default=None, help="Override video path")
     parser.add_argument("--no-pinecone", action="store_true", help="Disable Pinecone, log locally")

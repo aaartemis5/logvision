@@ -32,7 +32,8 @@ class AnomalyDetector:
 
     def evaluate(self, det: Detection,
                  hand_result: dict | None = None,
-                 head_result: dict | None = None) -> dict:
+                 head_result: dict | None = None,
+                 seat_events: list[dict] | None = None) -> dict:
         """
         Returns anomaly dict:
         {is_anomaly, confidence, severity, reasons, rule}
@@ -58,21 +59,18 @@ class AnomalyDetector:
             reasons.append("person_lying_down")
             confidence += 0.55
 
-        # ── Rule: ARMS RAISED ─────────────────────────────────────────
-        if det.arms_raised:
-            reasons.append("arms_raised")
-            confidence += 0.35
-
-        # ── Rule: RUNNING ─────────────────────────────────────────────
-        if det.pose == "RUNNING":
-            reasons.append("running_detected")
-            confidence += 0.25
-
-        # ── Rule: CROUCHING NEAR SHELF ────────────────────────────────
-        if det.pose == "CROUCHING" and det.zone == "SHELF_AREA":
-            if zone_dwell > config.CROUCH_NEAR_SHELF_S:
-                reasons.append("crouching_near_shelf")
-                confidence += 0.40
+        # ── Retail rules (switched off when RETAIL_RULES_ENABLED = False) ──
+        if getattr(config, "RETAIL_RULES_ENABLED", False):
+            if det.arms_raised:
+                reasons.append("arms_raised")
+                confidence += 0.35
+            if det.pose == "RUNNING":
+                reasons.append("running_detected")
+                confidence += 0.25
+            if det.pose == "CROUCHING" and det.zone == "SHELF_AREA":
+                if zone_dwell > config.CROUCH_NEAR_SHELF_S:
+                    reasons.append("crouching_near_shelf")
+                    confidence += 0.40
 
         # ── Rule: DWELL TIME ─────────────────────────────────────────
         # Skip zones where long dwell is perfectly normal (checkout queue etc.)
@@ -92,35 +90,54 @@ class AnomalyDetector:
                 confidence += 0.15
 
         # ── Rule: LATE NIGHT ─────────────────────────────────────────
-        hour = datetime.datetime.fromtimestamp(now).hour
-        nh_start, nh_end = config.NIGHT_HOURS
-        is_night = hour >= nh_start or hour < nh_end
-        if is_night and reasons:   # night hours amplify existing rules
-            confidence += 0.15
-            reasons.append("late_night_activity")
+        if getattr(config, "RETAIL_RULES_ENABLED", False):
+            hour = datetime.datetime.fromtimestamp(now).hour
+            nh_start, nh_end = config.NIGHT_HOURS
+            is_night = hour >= nh_start or hour < nh_end
+            if is_night and reasons:
+                confidence += 0.15
+                reasons.append("late_night_activity")
 
         # ── Rule: POSE STATE CHANGED ──────────────────────────────────
         if det.pose != det.previous_pose and det.pose in ("CROUCHING", "LYING DOWN"):
             reasons.append(f"pose_changed_to_{det.pose.lower().replace(' ','_')}")
             confidence += 0.10
 
-        # ── Rule: SURVEILLANCE CHECKING (head pose scanning) ────────────
+        # ── Rule: RESTLESSNESS / HEAD SCANNING ──────────────────────────
         if head_result and head_result.get("surveillance_flag"):
             scans = head_result.get("scans_in_window", 0)
-            rate  = head_result.get("scan_rate_per_min", 0)
-            reasons.append(f"surveillance_checking_{scans}scans_{int(rate)}rpm")
-            confidence += 0.40   # strong signal when combined with dwell
+            reasons.append("restless_head_movement")
+            confidence += 0.35
 
-        # ── Rule: CONCEALING / BAG-STUFFING (MediaPipe Hands) ────────────
-        if hand_result and hand_result.get("bag_stuff_suspected"):
-            reasons.append("concealing_gesture")
-            confidence += 0.50   # highest-weight rule — very specific signal
+        # ── Retail Hand Gestures ────────────────────────────────────────
+        if getattr(config, "RETAIL_RULES_ENABLED", False):
+            if hand_result and hand_result.get("bag_stuff_suspected"):
+                reasons.append("concealing_gesture")
+                confidence += 0.50
+            if hand_result and hand_result.get("gesture") == "reaching" \
+                    and det.zone == "SHELF_AREA":
+                reasons.append("reaching_in_shelf")
+                confidence += 0.15
 
-        # ── Rule: REACHING IN SHELF ZONE ─────────────────────────────────
-        if hand_result and hand_result.get("gesture") == "reaching" \
-                and det.zone == "SHELF_AREA":
-            reasons.append("reaching_in_shelf")
-            confidence += 0.15
+        # ── Seating Study Events ────────────────────────────────────────
+        if seat_events:
+            for se in seat_events:
+                stype = se.get("type")
+                if stype == "SIT_DOWN":
+                    reasons.append("sit_down")
+                    confidence += 0.10
+                    if se.get("abrupt"):
+                        reasons.append("abrupt_sit")
+                        confidence += 0.40
+                    if se.get("seat_switch"):
+                        reasons.append("seat_switch")
+                        confidence += 0.20
+                    if se.get("neighbour_occupied_by"):
+                        reasons.append("neighbour_seat_occupied")
+                        confidence += 0.15
+                elif stype == "STAND_UP":
+                    reasons.append("stand_up")
+                    confidence += 0.10
 
         # Clip to [0, 1]
         confidence = min(round(confidence, 3), 1.0)

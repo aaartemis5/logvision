@@ -14,7 +14,7 @@ from visionlog import config
 from main import run_camera_generator
 from query import ask
 
-app = FastAPI(title="VisionLog AI Dashboard")
+app = FastAPI(title="REST Dashboard")
 
 # Mount frontend web assets
 app.mount("/web", StaticFiles(directory="web"), name="web")

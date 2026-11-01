@@ -1,6 +1,6 @@
-# VisionLog AI — Real-Time CCTV Intelligence Platform
+# REST — Vision-Based Seating Behaviour & Comfort Analysis
 
-> **Edge-processing AI that detects, tracks, and profiles individuals from live CCTV feeds in real-time, then enables natural language querying of events and video footage via a multimodal RAG system.**
+> **Edge-processing AI that measures how people actually use cushioning and seating from video recordings using pose estimation and multi-object tracking, then enables natural language querying of seating events via multimodal RAG.**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-green?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -12,14 +12,16 @@
 
 ## What Is This?
 
-VisionLog AI is a **hybrid computer vision + Generative AI surveillance system** that runs entirely on consumer hardware (tested on GTX 1650 Ti). It combines:
+REST is a **vision-based seating behaviour analysis platform** built for **EcoLattice**, a company designing 3D-printed TPU lattice cushioning and seating. EcoLattice requires empirical evidence about how individuals interact with seating in practice—not merely how mechanical test rigs load cushions in isolation.
 
-- **Real-time person tracking** at 30 FPS using YOLO26-Pose + BoT-SORT
-- **Occlusion-proof re-identification** — a person keeps their ID even after walking behind a shelf
-- **Automatic anomaly detection** — dwell time, crouching near shelves, head-scanning behaviour
-- **Multimodal RAG chatbot** — ask questions in plain English like *"Was anyone crouching near the shelves at night?"* and get a Gemini-powered intelligence report + searchable video clip evidence
+The system watches video of people sitting and answers questions like:
+- **Seated duration**: How long did each person stay seated?
+- **Posture changes & shifts**: How often did they change posture or fidget?
+- **Entry dynamics**: Did they lower themselves gently or sit down abruptly?
+- **Seat preference**: Did they choose a specific seat, ignore an adjacent one, or switch seats?
+- **Restlessness**: Are occupants settled and relaxed, or restless (frequent head movements)?
 
-The live analytics stream runs in a browser-based dashboard alongside the AI inquiry panel.
+Engineers and designers can query the dataset in plain English (e.g. *"Show me someone who sat down abruptly"* or *"How long was Seat A occupied?"*) to receive an AI intelligence summary paired with matching video clip evidence.
 
 ---
 

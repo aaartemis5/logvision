@@ -5,6 +5,7 @@ This is the single source of truth for the event schema.
 """
 import uuid
 import datetime
+from visionlog import config
 from visionlog.detection.detector import Detection
 
 
@@ -19,6 +20,7 @@ def build_event(
     hand_result:   dict | None = None,   # from MediaPipe HandTracker
     head_result:   dict | None = None,   # from HeadPoseTracker
     risk_data:     dict | None = None,   # from RiskScorer / BehaviourWindow
+    seat_events:   list | None = None,   # from SeatTracker
 ) -> dict:
     """
     Builds the full event JSON dict. This is what gets embedded + sent to Pinecone.
@@ -50,7 +52,7 @@ def build_event(
 
     head_tag = (
         f" | Head: {hd.get('direction','unknown').upper()}"
-        + (f" 👁 SURVEILLANCE_CHECKING ({hd.get('scans_in_window',0)} scans)"
+        + (" 👁 RESTLESS_HEAD_MOVEMENT"
            if hd.get('surveillance_flag') else "")
     ) if hd.get("direction") and hd["direction"] not in ("unknown", "away") else ""
 
@@ -71,12 +73,48 @@ def build_event(
         risk_tag += (f" | ⚠️ ZONE_TRANSITION "
                      f"{zone_alert['from']}→{zone_alert['to']} ({zone_alert['dwell_s']}s)")
 
+
+    # ── Seat details ─────────────────────────────────────────────────
+    seat_info = {
+        "seat_id":               None,
+        "event":                 None,
+        "seated_duration_s":     None,
+        "abrupt":                False,
+        "descent_speed":         0.0,
+        "neighbour_occupied_by": [],
+        "seat_switch":           False,
+    }
+    seat_phrase = ""
+    if seat_events:
+        se = seat_events[0]
+        seat_info.update({
+            "seat_id":               se.get("seat_id"),
+            "event":                 se.get("type"),
+            "seated_duration_s":     se.get("seated_duration_s"),
+            "abrupt":                se.get("abrupt", False),
+            "descent_speed":         se.get("descent_speed", 0.0),
+            "neighbour_occupied_by": se.get("neighbour_occupied_by", []),
+            "seat_switch":           se.get("seat_switch", False),
+        })
+        if se.get("type") == "SIT_DOWN":
+            seat_phrase = f" | SIT_DOWN in {se.get('seat_id')}"
+            if se.get("abrupt"):
+                seat_phrase += " (abrupt)"
+            if se.get("neighbour_occupied_by"):
+                seat_phrase += " neighbour seat occupied"
+            if se.get("seat_switch"):
+                seat_phrase += " moved to neighbouring seat"
+        elif se.get("type") == "STAND_UP":
+            seat_phrase = f" | STAND_UP from {se.get('seat_id')} after {se.get('seated_duration_s')}s"
+    elif det.zone in config.SEAT_ZONES.get(det.camera_id, []):
+        seat_info["seat_id"] = det.zone
+
     text_summary = (
         f"{now_dt.strftime('%H:%M:%S')} | {camera_meta['camera_id']} ({camera_meta['name']}) | "
         f"Person #{det.local_id} ({pa.get('gender','?')}, ~{pa.get('age','?')}yo, "
         f"{pa.get('clothing_desc','?')}) | "
         f"Pose: {det.previous_pose} \u2192 {det.pose} | Zone: {det.zone} | "
-        f"Dwell: {dwell_s}s | Move: {det.movement_state}{gesture_tag}{head_tag}"
+        f"Dwell: {dwell_s}s | Move: {det.movement_state}{gesture_tag}{head_tag}{seat_phrase}"
         f"{risk_tag}. {vlm_line} {anom_tag}"
     ).strip()
 
@@ -116,6 +154,8 @@ def build_event(
             "interacting_with_ids": [],
         },
 
+        "seat": seat_info,
+
         "detection": {
             "confidence":   round(det.confidence, 3),
             "bbox":         {"x1": det.bbox[0], "y1": det.bbox[1],
@@ -139,7 +179,7 @@ def build_event(
             "ocr_text":              sc.get("ocr_text"),
         },
 
-        "event_type": _infer_event_type(det),
+        "event_type": _infer_event_type(det, seat_events),
 
         "anomaly": anomaly,
 
@@ -165,7 +205,9 @@ def _time_of_day(hour: int) -> str:
     return "night"
 
 
-def _infer_event_type(det: Detection) -> str:
+def _infer_event_type(det: Detection, seat_events: list | None = None) -> str:
+    if seat_events:
+        return seat_events[0].get("type", "SEAT_EVENT")
     if det.pose != det.previous_pose:
         return "POSE_CHANGE"
     if det.movement_state == "running":
