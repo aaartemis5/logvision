@@ -89,6 +89,18 @@ def index_video(video_path: str):
     )
     print(f"       ✅ Asset created: id={asset.id}")
 
+    # Wait for Twelve Labs to finish processing uploaded asset
+    print("       ⏳ Waiting for asset processing to complete...")
+    while True:
+        current_asset = client.assets.retrieve(asset_id=asset.id)
+        if current_asset.status == "ready":
+            print("       ✅ Asset is ready for embedding!")
+            break
+        elif current_asset.status == "failed":
+            print("       ❌ Asset processing failed on Twelve Labs!")
+            sys.exit(1)
+        time.sleep(3)
+
     # ── Step 3: Create embeddings ────────────────────────────────────────
     print(f"[3/4] Creating {SEGMENT_DURATION}s clip embeddings...")
     print(f"       (This may take a few minutes depending on video length)")

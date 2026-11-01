@@ -53,8 +53,8 @@ YOLO_MODEL        = "yolo26l-pose.pt"     # YOLO26 Large: NMS-free, faster infer
 TRACKER           = "botsort_reid.yaml"  # BoT-SORT + appearance ReID enabled
 YOLO_CONF         = 0.4                 # detection confidence threshold
 YOLO_CLASSES      = [0]                 # 0 = person only. Remove to detect all 80 classes.
-FRAME_SKIP        = 2                   # process 1-in-N frames (2 = 15fps effective @ 30fps)
-PROCESS_WIDTH     = 960                 # resize frames to this width before all inference
+FRAME_SKIP        = 3                   # process 1-in-N frames (3 = fast inference @ 24-30fps)
+PROCESS_WIDTH     = 640                 # resize to 640 for 2x faster inference
                                         # (960 = good balance; 640 = fastest; 0 = no resize)
 
 # ── Enrichment ───────────────────────────────────────────────────────

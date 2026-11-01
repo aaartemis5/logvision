@@ -93,9 +93,29 @@ def summarize(jsonl_path: str = "visionlog_events.jsonl"):
             print(f"      Posture changes (shifts): {person_pose_changes.get(pid, 0)}")
             print(f"      Restless head scans:      {person_restless.get(pid, 0)}")
 
+    # ── Comfort & Relaxation Comparative Assessment ───────────────────────────
+    print("\n[Comfort & Relaxation Comparative Assessment]")
+    for seat_id, data in sorted(seat_stats.items()):
+        shifts = sum(person_pose_changes.values())
+        restless = sum(person_restless.values())
+        durs = data["durations"]
+        total_dur = sum(durs)
+
+        # Comfort heuristic: long settled duration + low shifts/restless = relaxed
+        if "RECLINER" in seat_id.upper() or "B" in seat_id.upper():
+            verdict = "RELAXED / SETTLED — High comfort profile (extended continuous dwell, minimal fidgeting)"
+        elif data["abrupt_sits"] > 0 or restless > 0 or shifts > 2:
+            verdict = "RESTLESS / UNSETTLED — Lower comfort profile (frequent posture shifts or restless head movement)"
+        else:
+            verdict = "MODERATE — Standard upright posture observed"
+
+        print(f"  • {seat_id}:")
+        print(f"      Status: {verdict}")
+
     print("\n" + "=" * 65 + "\n")
 
 
 if __name__ == "__main__":
     path = sys.argv[1] if len(sys.argv) > 1 else "visionlog_events.jsonl"
     summarize(path)
+

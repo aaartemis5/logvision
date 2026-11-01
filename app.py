@@ -166,5 +166,5 @@ async def serve_video(camera_filename: str):
 if __name__ == "__main__":
     # Ensure web directory exists
     os.makedirs("web", exist_ok=True)
-    print("🚀 Starting VisionLog UI on http://localhost:8000")
+    print("🚀 Starting REST Seating Study UI on http://localhost:8000")
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

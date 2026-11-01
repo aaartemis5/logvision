@@ -44,7 +44,15 @@ def store(event: dict, use_pinecone: bool = True):
 
     # ── Terminal print ────────────────────────────────────────────────
     anom = event.get("anomaly", {})
-    tag  = f"  ⚠️  [{anom.get('severity')}]" if anom.get("is_anomaly") else ""
+    seat_info = event.get("seat", {})
+    if seat_info.get("event"):
+        tag = f"  🪑 [{seat_info.get('event')}: {seat_info.get('seat_id')}]"
+    elif "restless_head_movement" in anom.get("reasons", []):
+        tag = "  👁️ [RESTLESS FIDGETING]"
+    elif anom.get("is_anomaly"):
+        tag = f"  ⚡ [{anom.get('severity')}]"
+    else:
+        tag = ""
     
     console_text = text
     if " VLM: '" in console_text:

@@ -43,3 +43,4 @@ SEAT_SWITCH_WINDOW_S   = 30.0       # Max interval (s) between stand and neighbo
 * **Step 3 (Zone reference point refactoring):** Skipped as advised in the specification prompt. Modifying the `zone_fn` callable signature across `Detector` and `ZoneManager` was unnecessary because bounding box center alignment is well within the seating polygon boundaries.
 * **Pinecone Index Names:** Left as `logvision` and `visionlog-video` per strict instructions not to alter cloud infrastructure naming.
 * **Package Directory:** Kept as `visionlog/` and all internal package imports unchanged.
+
